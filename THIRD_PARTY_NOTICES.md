@@ -1,6 +1,8 @@
 # Third-party notices
 
-Python 依赖的许可证由各自项目维护，发布者应在构建发行物时重新生成依赖许可证清单。
+Licenses for Python dependencies are maintained by their respective projects. Anyone
+building a redistributable artifact should regenerate a complete dependency license
+inventory as part of that build.
 
 ## wx_channels_download
 
@@ -8,9 +10,10 @@ Python 依赖的许可证由各自项目维护，发布者应在构建发行物�
 - Copyright: Copyright (c) 2025 ltaoo
 - License: MIT License with Commons Clause License Condition v1.0
 
-该许可证包含“不授予销售本软件的权利”条件。本项目仅通过本地 HTTP API 与用户自行
-安装的下载器集成，不分发其二进制或根证书。
+The Commons Clause includes a restriction that does not grant the right to sell the
+software. This project integrates with a downloader installed by the user through a local
+HTTP API; it does not distribute the downloader binary or root certificate.
 
-`integrations/wechat-channels/wx_channels_download-macos-long-poll.patch` 是针对该上游
-项目特定版本的兼容补丁，适用上游许可证及版权声明，不属于本项目 Apache-2.0
-授权范围。
+`integrations/wechat-channels/wx_channels_download-macos-long-poll.patch` is a compatibility
+patch for a specific upstream version. It remains subject to the upstream license and
+copyright notices and is not covered by this project's Apache-2.0 license.

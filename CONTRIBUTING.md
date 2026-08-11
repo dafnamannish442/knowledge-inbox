@@ -1,8 +1,8 @@
 # Contributing
 
-欢迎修复 Bug、改进文档和新增 Source Adapter。
+Bug fixes, documentation improvements, and new source adapters are welcome.
 
-## 开发环境
+## Development environment
 
 ```bash
 python3 -m venv .venv
@@ -12,12 +12,14 @@ pytest -q
 ruff check backend scripts tests
 ```
 
-## 新增 Adapter
+## Adding an adapter
 
-1. 在 `backend/adapters/` 继承 `SourceAdapter`。
-2. 实现 `detect()` 和 `fetch()`，返回 `FetchedContent`。
-3. 在 `backend/adapters/registry.py` 注册，专用 Adapter 必须排在通用网页 Adapter 前。
-4. 为检测、正文提取和失败路径增加离线测试。
+1. Add a `SourceAdapter` implementation under `backend/adapters/`.
+2. Implement `detect()` and `fetch()`, returning `FetchedContent`.
+3. Register it in `backend/adapters/registry.py`. A specialized adapter must be listed
+   before the generic web adapter.
+4. Add offline tests for detection, content extraction, and failure paths.
 
-Pull Request 不应包含真实账号、Cookie、密钥、本机绝对路径、媒体文件、下载器二进制
-或由目标平台抓取的受版权保护样本。测试 Fixture 请使用最小的合成内容。
+Pull requests must not include real accounts, cookies, API keys, local absolute paths,
+media files, downloader binaries, or copyrighted samples captured from a target platform.
+Use small synthetic fixtures instead.
