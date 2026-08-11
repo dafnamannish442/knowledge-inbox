@@ -53,9 +53,60 @@ async def fetch_html(url: str, user_data_dir: Path | None = None) -> str:
     return body.decode("utf-8", errors="replace")
 
 
+async def download_file(
+    url: str,
+    output_dir: Path,
+    max_mb: int,
+    referer: str | None = None,
+    filename: str | None = None,
+) -> str:
+    headers = {"User-Agent": USER_AGENT}
+    if referer:
+        headers["Referer"] = referer
+    output_dir.mkdir(parents=True, exist_ok=True)
+    async with httpx.AsyncClient(follow_redirects=True, timeout=90, headers=headers) as client:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            suffix = media_extension(url, response.headers.get("content-type", ""))
+            stem = safe_filename(filename or Path(urlparse(url).path).stem, "media")
+            target = output_dir / f"{uuid4().hex[:12]}-{stem}{suffix}"
+            partial = target.with_suffix(target.suffix + ".part")
+            limit = max_mb * 1024 * 1024
+            size = 0
+            try:
+                with partial.open("wb") as destination:
+                    async for chunk in response.aiter_bytes():
+                        size += len(chunk)
+                        if size > limit:
+                            raise ValueError(f"下载超过 {max_mb} MB 限制")
+                        destination.write(chunk)
+                partial.replace(target)
+            except Exception:
+                partial.unlink(missing_ok=True)
+                raise
+    return str(target)
+
+
 def safe_filename(value: str, fallback: str = "file") -> str:
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", value).strip(" .")
     return cleaned[:100] or fallback
+
+
+def subtitle_to_text(value: str) -> str:
+    results: list[str] = []
+    for raw_line in value.splitlines():
+        line = re.sub(r"<[^>]+>", "", raw_line).strip()
+        if (
+            not line
+            or line == "WEBVTT"
+            or "-->" in line
+            or line.isdigit()
+            or line.startswith(("NOTE", "STYLE", "REGION"))
+        ):
+            continue
+        if not results or results[-1] != line:
+            results.append(line)
+    return "\n".join(results)
 
 
 def media_extension(url: str, content_type: str) -> str:
@@ -68,6 +119,14 @@ def media_extension(url: str, content_type: str) -> str:
         "image/webp": ".webp",
         "image/gif": ".gif",
         "video/mp4": ".mp4",
+        "video/webm": ".webm",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/flac": ".flac",
+        "audio/ogg": ".ogg",
     }.get(content_type.split(";")[0].lower(), ".bin")
 
 

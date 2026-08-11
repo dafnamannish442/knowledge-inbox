@@ -34,7 +34,10 @@ def build_registry(config: AppConfig) -> AdapterRegistry:
     from backend.adapters.image import ImageAdapter
     from backend.adapters.local_file import LocalFileAdapter
     from backend.adapters.pdf import PDFAdapter
+    from backend.adapters.podcast import PodcastAdapter
+    from backend.adapters.remote_media import RemoteMediaAdapter
     from backend.adapters.twitter import TwitterAdapter
+    from backend.adapters.vimeo import VimeoAdapter
     from backend.adapters.webpage import WebAdapter
     from backend.adapters.wechat_article import WeChatArticleAdapter
     from backend.adapters.wechat_video import WeChatVideoAdapter
@@ -44,6 +47,9 @@ def build_registry(config: AppConfig) -> AdapterRegistry:
     # Specialized adapters must be checked before the generic web adapter.
     for adapter_type in (
         YouTubeAdapter,
+        VimeoAdapter,
+        PodcastAdapter,
+        RemoteMediaAdapter,
         TwitterAdapter,
         WeChatArticleAdapter,
         WeChatVideoAdapter,

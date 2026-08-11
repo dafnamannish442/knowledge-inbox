@@ -108,7 +108,21 @@ class ContentPipeline:
 
     @staticmethod
     def _has_audio_media(paths: list[str]) -> bool:
-        suffixes = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mp3", ".m4a", ".wav"}
+        suffixes = {
+            ".aac",
+            ".avi",
+            ".flac",
+            ".m4a",
+            ".m4v",
+            ".mkv",
+            ".mov",
+            ".mp3",
+            ".mp4",
+            ".ogg",
+            ".opus",
+            ".wav",
+            ".webm",
+        }
         return any(Path(path).suffix.lower() in suffixes for path in paths)
 
     def _videos_to_delete(self, item: ContentItem) -> list[Path]:

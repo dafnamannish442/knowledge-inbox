@@ -8,8 +8,11 @@ from types import ModuleType, SimpleNamespace
 
 import httpx
 
+from backend.adapters.podcast import PodcastAdapter
 from backend.adapters.registry import AdapterRegistry, build_registry
+from backend.adapters.remote_media import RemoteMediaAdapter
 from backend.adapters.twitter import TwitterAdapter
+from backend.adapters.vimeo import VimeoAdapter
 from backend.adapters.wechat_video import WeChatVideoAdapter
 from backend.config import AIConfig, AppConfig
 from backend.models import ContentItem, Job, JobStatus
@@ -94,12 +97,165 @@ def test_running_jobs_are_recovered_as_queued(tmp_path: Path) -> None:
 def test_registry_prefers_platform_specific_adapters(tmp_path: Path) -> None:
     registry = build_registry(make_config(tmp_path))
     assert registry.for_url("https://youtu.be/abc").source_type == "youtube"
+    assert registry.for_url("https://vimeo.com/123456").source_type == "vimeo"
+    assert registry.for_url("https://feeds.example.com/show.rss").source_type == "podcast"
+    assert registry.for_url("https://cdn.example.com/episode.mp3?download=1").source_type == "remote_media"
+    assert registry.for_url("https://cdn.example.com/live/index.m3u8").source_type == "remote_media"
     assert registry.for_url("https://x.com/user/status/123").source_type == "twitter"
     assert registry.for_url("https://mp.weixin.qq.com/s/example").source_type == "wechat_article"
     assert registry.for_url("https://example.com/article").source_type == "webpage"
     assert registry.for_file(Path("scan.pdf")).source_type == "pdf"
     assert registry.for_file(Path("screen.png")).source_type == "image"
     assert registry.for_file(Path("clip.mp4")).source_type == "wechat_video"
+
+
+def test_remote_media_adapter_downloads_direct_audio(tmp_path: Path, monkeypatch) -> None:
+    config = make_config(tmp_path)
+    downloaded = config.data_dir / "originals" / "remote_media" / "episode.mp3"
+
+    async def fake_download(url, output_dir, max_mb, referer=None, filename=None):
+        assert url == "https://cdn.example.com/episode.mp3?download=1"
+        assert max_mb == config.max_download_mb
+        downloaded.parent.mkdir(parents=True, exist_ok=True)
+        downloaded.write_bytes(b"audio")
+        return str(downloaded)
+
+    monkeypatch.setattr("backend.adapters.remote_media.download_file", fake_download)
+    fetched = asyncio.run(
+        RemoteMediaAdapter(config).fetch(
+            "https://cdn.example.com/episode.mp3?download=1"
+        )
+    )
+    assert fetched.title == "episode"
+    assert fetched.media_files == [str(downloaded)]
+    assert fetched.metadata["capture_mode"] == "direct_download"
+
+
+def test_remote_media_adapter_resolves_hls(tmp_path: Path, monkeypatch) -> None:
+    config = make_config(tmp_path)
+    downloaded = config.data_dir / "originals" / "remote_media" / "stream.mp4"
+    downloaded.parent.mkdir(parents=True, exist_ok=True)
+    downloaded.write_bytes(b"video")
+    monkeypatch.setattr(RemoteMediaAdapter, "_download_hls", lambda self, url: str(downloaded))
+    fetched = asyncio.run(
+        RemoteMediaAdapter(config).fetch("https://cdn.example.com/live/index.m3u8")
+    )
+    assert fetched.media_files == [str(downloaded)]
+    assert fetched.metadata["capture_mode"] == "hls"
+
+
+def test_podcast_adapter_uses_rss_transcript_and_enclosure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = make_config(tmp_path)
+    feed_url = "https://feeds.example.com/show.rss"
+    transcript_url = "https://cdn.example.com/episode.vtt"
+    audio_url = "https://cdn.example.com/episode.mp3"
+    feed = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0"
+      xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+      xmlns:podcast="https://podcastindex.org/namespace/1.0">
+      <channel>
+        <title>Example Show</title>
+        <itunes:author>Show Author</itunes:author>
+        <item>
+          <title>Episode 42</title>
+          <description><![CDATA[<p>Episode notes.</p>]]></description>
+          <pubDate>Tue, 11 Aug 2026 12:00:00 GMT</pubDate>
+          <enclosure url="https://cdn.example.com/episode.mp3" type="audio/mpeg"/>
+          <podcast:transcript url="https://cdn.example.com/episode.vtt" type="text/vtt"/>
+        </item>
+      </channel>
+    </rss>"""
+    transcript = b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nFirst point.\n\n00:00:02.000 --> 00:00:04.000\nSecond point.\n"
+
+    async def fake_fetch_bytes(url, max_mb, referer=None):
+        if url == feed_url:
+            return feed, "application/rss+xml"
+        assert url == transcript_url
+        return transcript, "text/vtt"
+
+    audio_path = config.data_dir / "originals" / "podcast" / "episode.mp3"
+
+    async def fake_download(url, output_dir, max_mb, referer=None, filename=None):
+        assert url == audio_url
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"audio")
+        return str(audio_path)
+
+    monkeypatch.setattr("backend.adapters.podcast.fetch_bytes", fake_fetch_bytes)
+    monkeypatch.setattr("backend.adapters.podcast.download_file", fake_download)
+    fetched = asyncio.run(PodcastAdapter(config).fetch(feed_url))
+    assert fetched.title == "Episode 42"
+    assert fetched.author == "Show Author"
+    assert fetched.raw_content == "Episode notes."
+    assert fetched.transcript == "First point.\nSecond point."
+    assert fetched.media_files == [str(audio_path)]
+    assert fetched.metadata["show_title"] == "Example Show"
+
+
+def test_podcast_adapter_resolves_specific_apple_episode(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = make_config(tmp_path)
+    source_url = "https://podcasts.apple.com/us/podcast/example/id123456?i=987654"
+    audio_path = config.data_dir / "originals" / "podcast" / "selected.mp3"
+
+    async def fake_lookup(self, catalog_id, entity):
+        assert (catalog_id, entity) == ("987654", "podcastEpisode")
+        return [
+            {
+                "kind": "podcast-episode",
+                "trackName": "Selected Episode",
+                "artistName": "Example Host",
+                "collectionName": "Example Show",
+                "description": "Selected notes.",
+                "episodeUrl": "https://cdn.example.com/selected.mp3",
+            }
+        ]
+
+    async def fake_download(url, output_dir, max_mb, referer=None, filename=None):
+        assert url == "https://cdn.example.com/selected.mp3"
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"audio")
+        return str(audio_path)
+
+    monkeypatch.setattr(PodcastAdapter, "_apple_lookup", fake_lookup)
+    monkeypatch.setattr("backend.adapters.podcast.download_file", fake_download)
+    fetched = asyncio.run(PodcastAdapter(config).fetch(source_url))
+    assert fetched.title == "Selected Episode"
+    assert fetched.author == "Example Host"
+    assert fetched.media_files == [str(audio_path)]
+    assert fetched.metadata["catalog"] == "apple_podcasts"
+
+
+def test_vimeo_adapter_uses_oembed_and_resolved_captions(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = make_config(tmp_path)
+    url = "https://vimeo.com/123456"
+    video_path = config.data_dir / "originals" / "vimeo" / "123456.mp4"
+
+    async def fake_fetch_bytes(request_url, max_mb, referer=None):
+        assert request_url.startswith("https://vimeo.com/api/oembed.json?")
+        return (
+            b'{"title":"Design Systems","author_name":"Example Studio"}',
+            "application/json",
+        )
+
+    def fake_resolve(self, request_url):
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"video")
+        return str(video_path), "Caption text.", {"duration": 120}
+
+    monkeypatch.setattr("backend.adapters.vimeo.fetch_bytes", fake_fetch_bytes)
+    monkeypatch.setattr(VimeoAdapter, "_resolve_media", fake_resolve)
+    fetched = asyncio.run(VimeoAdapter(config).fetch(url))
+    assert fetched.title == "Design Systems"
+    assert fetched.author == "Example Studio"
+    assert fetched.transcript == "Caption text."
+    assert fetched.media_files == [str(video_path)]
+    assert fetched.metadata["duration"] == 120
 
 
 def test_twitter_adapter_keeps_parent_and_quoted_context(

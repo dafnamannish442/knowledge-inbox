@@ -4,7 +4,7 @@ Local-first, plugin-based knowledge ingestion for Hermes, Obsidian, and other lo
 retrieval tools. It turns links, text, videos, screenshots, PDFs, and local files into
 structured Markdown knowledge cards and saves them to an Obsidian Vault.
 
-> Current release: `0.1.1`. Web and file ingestion run cross-platform. WeChat Channels
+> Current release: `0.2.0`. Web and file ingestion run cross-platform. WeChat Channels
 > downloading is an optional, experimental macOS integration that requires the desktop
 > WeChat client and a local TLS proxy.
 
@@ -38,6 +38,9 @@ Every source is normalized into a `ContentItem`. To add a platform, implement
 | WeChat Official Accounts | URL | Article body, author, and images; can also be synced by another tool |
 | X / Twitter | Post URL | Current post, visible parent context, quoted content, and media when available |
 | YouTube | URL | Captions first; Whisper fallback when captions are unavailable |
+| Podcast RSS and Apple Podcasts | Feed or episode URL | Episode metadata, Podcasting 2.0 transcript, audio download, and Whisper fallback |
+| Vimeo | URL | oEmbed metadata, captions when available, and Whisper fallback |
+| Direct audio, video, and HLS | Media URL | Streaming download for common media files; yt-dlp resolution for `.m3u8` |
 | PDF | File | Text extraction; OCR for scanned pages with the media extra |
 | Images | File | OCR plus visual and chart descriptions when a vision model is configured |
 | Audio and video | File | Whisper transcription or vision-model understanding |
@@ -62,6 +65,8 @@ Open <http://127.0.0.1:8787>, or use the CLI:
 
 ```bash
 .venv/bin/python scripts/ingest.py 'https://example.com/article'
+.venv/bin/python scripts/ingest.py 'https://feeds.example.com/show.rss'
+.venv/bin/python scripts/ingest.py 'https://vimeo.com/123456'
 .venv/bin/python scripts/ingest.py '/absolute/path/file.pdf'
 .venv/bin/python scripts/ingest.py 'A note to keep' --title 'Quick note'
 ```

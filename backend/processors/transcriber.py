@@ -5,7 +5,21 @@ from pathlib import Path
 
 
 class Transcriber:
-    _media_suffixes = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mp3", ".m4a", ".wav"}
+    _media_suffixes = {
+        ".aac",
+        ".avi",
+        ".flac",
+        ".m4a",
+        ".m4v",
+        ".mkv",
+        ".mov",
+        ".mp3",
+        ".mp4",
+        ".ogg",
+        ".opus",
+        ".wav",
+        ".webm",
+    }
 
     async def transcribe_first(self, media_files: list[str]) -> str | None:
         path = next(
