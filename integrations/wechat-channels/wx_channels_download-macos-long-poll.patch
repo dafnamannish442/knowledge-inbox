@@ -1,0 +1,241 @@
+diff --git a/internal/api/routes.go b/internal/api/routes.go
+index ef8c3f3..c819f07 100644
+--- a/internal/api/routes.go
++++ b/internal/api/routes.go
+@@ -26,6 +26,8 @@ func (c *APIClient) SetupRoutes() {
+ 		c.engine.GET("/api/channels/feed/comment/list", c.handleFetchFeedCommentList)
+ 		c.engine.GET("/api/channels/feed/share_url", c.handleFetchFeedShareUrl)
+ 		c.engine.GET("/api/channels/parse_sph", c.handleParseSph)
++		c.engine.GET("/api/channels/poll", c.channels.HandleChannelsPoll)
++		c.engine.POST("/api/channels/poll/respond", c.channels.HandleChannelsPollResponse)
+ 		c.engine.GET("/rss/channels", c.handleFetchFeedListOfContactRSS)
+ 		// 公众号接口
+ 		c.engine.GET("/ws/mp", c.official.HandleWebsocket)
+@@ -104,6 +106,8 @@ func (c *APIClient) handleStatus(ctx *gin.Context) {
+ 	err := c.channels.Validate()
+ 	if err != nil {
+ 		channels_data["available"] = false
++	} else {
++		channels_data["available"] = true
+ 	}
+ 	data := gin.H{
+ 		"version":  c.cfg.Version,
+diff --git a/internal/channels/client.go b/internal/channels/client.go
+index 0cd1da5..46c44ab 100644
+--- a/internal/channels/client.go
++++ b/internal/channels/client.go
+@@ -39,6 +39,9 @@ type ChannelsClient struct {
+ 	engine          *gin.Engine
+ 	requests        map[string]chan ClientWebsocketResponse
+ 	requests_mu     sync.RWMutex
++	poll_send       chan []byte
++	poll_mu         sync.RWMutex
++	poll_last_seen  time.Time
+ 	cache           *cache.Cache
+ 	req_seq         uint64
+ 	refreshInterval int
+@@ -50,6 +53,7 @@ func NewChannelsClient(refreshInterval int) *ChannelsClient {
+ 	return &ChannelsClient{
+ 		ws_clients: make(map[*Client]bool),
+ 		requests:   make(map[string]chan ClientWebsocketResponse),
++		poll_send:  make(chan []byte, 256),
+ 		// engine:     gin.Default(),
+ 		cache:           cache.New(),
+ 		req_seq:         uint64(time.Now().UnixNano()),
+@@ -57,6 +61,42 @@ func NewChannelsClient(refreshInterval int) *ChannelsClient {
+ 	}
+ }
+ 
++func (c *ChannelsClient) deliverResponse(resp ClientWebsocketResponse) {
++	if resp.Id == "" {
++		return
++	}
++	c.requests_mu.RLock()
++	ch, ok := c.requests[resp.Id]
++	c.requests_mu.RUnlock()
++	if ok {
++		ch <- resp
++	}
++}
++
++func (c *ChannelsClient) HandleChannelsPoll(ctx *gin.Context) {
++	c.poll_mu.Lock()
++	c.poll_last_seen = time.Now()
++	c.poll_mu.Unlock()
++	select {
++	case msg := <-c.poll_send:
++		ctx.Data(http.StatusOK, "application/json; charset=utf-8", msg)
++	case <-time.After(20 * time.Second):
++		ctx.Status(http.StatusNoContent)
++	case <-ctx.Request.Context().Done():
++		return
++	}
++}
++
++func (c *ChannelsClient) HandleChannelsPollResponse(ctx *gin.Context) {
++	var resp ClientWebsocketResponse
++	if err := ctx.ShouldBindJSON(&resp); err != nil {
++		ctx.JSON(http.StatusBadRequest, gin.H{"code": 1, "msg": err.Error()})
++		return
++	}
++	c.deliverResponse(resp)
++	ctx.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok"})
++}
++
+ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
+ 	conn, err := channels_ws_upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
+ 	if err != nil {
+@@ -111,13 +151,8 @@ func (c *ChannelsClient) HandleChannelsWebsocket(ctx *gin.Context) {
+ 		// 前端「响应」给 ws api 请求的响应值
+ 		var resp ClientWebsocketResponse
+ 		if err := json.Unmarshal(message, &resp); err == nil && resp.Id != "" {
+-			c.requests_mu.RLock()
+-			ch, ok := c.requests[resp.Id]
+-			c.requests_mu.RUnlock()
+-			if ok {
+-				ch <- resp
+-				continue
+-			}
++			c.deliverResponse(resp)
++			continue
+ 		}
+ 	}
+ }
+@@ -148,7 +183,13 @@ func (c *ChannelsClient) Broadcast(v interface{}) {
+ func (wc *ChannelsClient) Validate() error {
+ 	// wc.clientsMu.Lock()
+ 	// defer wc.clientsMu.Unlock()
+-	if len(wc.ws_clients) == 0 {
++	wc.ws_mu.RLock()
++	hasWebsocket := len(wc.ws_clients) > 0
++	wc.ws_mu.RUnlock()
++	wc.poll_mu.RLock()
++	hasPoller := time.Since(wc.poll_last_seen) < 30*time.Second
++	wc.poll_mu.RUnlock()
++	if !hasWebsocket && !hasPoller {
+ 		return errors.New("请先初始化客户端 socket 连接")
+ 	}
+ 	return nil
+@@ -182,23 +223,27 @@ func (c *ChannelsClient) RequestFrontend(endpoint string, body interface{}, time
+ 		client = c
+ 		break
+ 	}
+-	if client == nil {
+-		c.ws_mu.Unlock()
+-		return nil, errors.New("没有可用的客户端")
+-	}
+ 	data, err := json.Marshal(msg)
+ 	if err != nil {
+ 		c.ws_mu.Unlock()
+ 		return nil, err
+ 	}
+-
+-	select {
+-	case client.Send <- data:
+-	default:
++	if client != nil {
++		select {
++		case client.Send <- data:
++		default:
++			c.ws_mu.Unlock()
++			return nil, errors.New("发送缓冲区已满")
++		}
+ 		c.ws_mu.Unlock()
+-		return nil, errors.New("发送缓冲区已满")
++	} else {
++		c.ws_mu.Unlock()
++		select {
++		case c.poll_send <- data:
++		default:
++			return nil, errors.New("轮询发送缓冲区已满")
++		}
+ 	}
+-	c.ws_mu.Unlock()
+ 	select {
+ 	case resp := <-resp_chan:
+ 		return &resp, nil
+diff --git a/internal/interceptor/inject/src/channels.js b/internal/interceptor/inject/src/channels.js
+index 7fc476e..fe9e52d 100644
+--- a/internal/interceptor/inject/src/channels.js
++++ b/internal/interceptor/inject/src/channels.js
+@@ -99,17 +99,60 @@ async function fetchFeedProfileWith(data) {
+ }
+ 
+ function ChannelsWebsocketClient() {
++  var poll_started = false;
+   const methods = {
+     connect_local_ws() {
+       const ws_url = WXEnv.channelsWSURL;
+       const ws = new WebSocket(ws_url);
++      const start_poll = () => {
++        if (poll_started || ws.readyState === WebSocket.OPEN) {
++          return;
++        }
++        poll_started = true;
++        const poll_url = WXEnv.channelsOrigin + "/api/channels/poll";
++        const respond_url =
++          WXEnv.channelsOrigin + "/api/channels/poll/respond";
++        const poll_socket = {
++          send: (payload) =>
++            fetch(respond_url, {
++              method: "POST",
++              headers: { "Content-Type": "application/json" },
++              body: payload,
++            }),
++        };
++        const loop = async () => {
++          while (poll_started && ws.readyState !== WebSocket.OPEN) {
++            try {
++              const response = await fetch(poll_url, { cache: "no-store" });
++              if (response.status === 204) {
++                continue;
++              }
++              if (!response.ok) {
++                throw new Error("poll failed: " + response.status);
++              }
++              const msg = await response.json();
++              if (msg.type === "api_call") {
++                await this.__wx_handle_api_call(msg.data, poll_socket);
++              }
++            } catch (err) {
++              await new Promise((resolve) => setTimeout(resolve, 1000));
++            }
++          }
++        };
++        loop();
++      };
++      ws.onopen = () => {
++        poll_started = false;
++      };
+       ws.onclose = (e) => {
+         WXU.error({
+           msg: `channels ws连接已关闭，reason: ${e.reason}，code: ${e.code}`,
+         });
++        start_poll();
+       };
+       ws.onerror = (e) => {
+         WXU.error({ msg: "channels ws连接发生错误，" + JSON.stringify(e) });
++        start_poll();
+       };
+       ws.onmessage = (ev) => {
+         const [err, msg] = WXU.parseJSON(ev.data);
+@@ -120,6 +163,7 @@ function ChannelsWebsocketClient() {
+           this.__wx_handle_api_call(msg.data, ws);
+         }
+       };
++      setTimeout(start_poll, 1500);
+     },
+     async __wx_handle_api_call(msg, socket) {
+       var { id, key, data } = msg;
+@@ -227,7 +271,10 @@ function ChannelsWebsocketClient() {
+         }
+         return;
+       }
+-      if (key === "key:channels:feed_profile") {
++      if (
++        key === "key:channels:feed_profile" ||
++        key === "key:channels:shared_feed_profile"
++      ) {
+         console.log("before finderGetCommentProfile", data);
+         var [err, r, payload] = await fetchFeedProfileWith(data);
+         if (err) {

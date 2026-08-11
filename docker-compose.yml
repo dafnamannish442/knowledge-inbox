@@ -1,0 +1,19 @@
+services:
+  knowledge-agent:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      KNOWLEDGE_DATA_DIR: /data
+      OBSIDIAN_VAULT_DIR: /vault
+      KNOWLEDGE_OPENAI_BASE_URL: ${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-qwen2.5:7b}
+      OPENAI_VISION_MODEL: ${OPENAI_VISION_MODEL:-}
+      AI_ENABLED: ${AI_ENABLED:-false}
+    volumes:
+      - ${KNOWLEDGE_DATA_DIR:-./data}:/data
+      - ${OBSIDIAN_VAULT_DIR:-./data/ObsidianVault}:/vault
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -1,0 +1,22 @@
+data_dir: ./data
+vault_dir: ./data/ObsidianVault
+inbox_folder: Knowledge Inbox
+database_path: ./data/knowledge.sqlite
+max_download_mb: 500
+download_remote_media: true
+delete_video_after_ingest: false
+
+ai:
+  enabled: false
+  base_url: http://127.0.0.1:11434/v1
+  api_key: ""
+  model: qwen2.5:7b
+  vision_model:
+  timeout_seconds: 180
+
+qmd_command: qmd
+qmd_collection:
+wechat_video_downloader_url: http://127.0.0.1:2022
+wechat_video_download_timeout_seconds: 300
+playwright_user_data_dir:
+telegram_webhook_secret:

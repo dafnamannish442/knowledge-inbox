@@ -1,0 +1,470 @@
+from __future__ import annotations
+
+import asyncio
+import sys
+from pathlib import Path
+from runpy import run_path
+from types import SimpleNamespace
+from types import ModuleType
+
+import httpx
+
+from backend.adapters.registry import AdapterRegistry, build_registry
+from backend.adapters.twitter import TwitterAdapter
+from backend.adapters.wechat_video import WeChatVideoAdapter
+from backend.config import AIConfig, AppConfig
+from backend.models import ContentItem, Job, JobStatus
+from backend.processors.ai import AIProcessor
+from backend.processors.linker import KnowledgeLinker
+from backend.processors.pipeline import ContentPipeline
+from backend.storage.db import Database
+from backend.storage.obsidian import ObsidianWriter
+
+
+def make_config(tmp_path: Path) -> AppConfig:
+    return AppConfig(
+        data_dir=tmp_path / "data",
+        vault_dir=tmp_path / "vault",
+        database_path=tmp_path / "knowledge.sqlite",
+        ai=AIConfig(enabled=False),
+        qmd_command="command-that-does-not-exist",
+    )
+
+
+def test_obsidian_format_has_required_sections() -> None:
+    item = ContentItem(
+        source_type="text",
+        title="测试知识",
+        raw_content="这是原始内容。",
+        summary="一句话。",
+        tags=["测试"],
+        category="示例",
+        related_notes=["已有知识"],
+        metadata={
+            "core_points": ["观点一"],
+            "key_data": ["数据一"],
+            "actions": ["行动一"],
+        },
+    )
+    note = ObsidianWriter.format(item)
+    for heading in (
+        "# 一句话总结",
+        "# 核心观点",
+        "# 关键数据",
+        "# 我的关联",
+        "# 可行动事项",
+        "# 原始内容",
+    ):
+        assert heading in note
+    assert "[[已有知识]]" in note
+
+
+def test_text_pipeline_writes_note_and_database(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    config.prepare()
+    database = Database(config.database_path)
+    database.initialize()
+    pipeline = ContentPipeline(
+        AdapterRegistry(),
+        database,
+        ObsidianWriter(config),
+        AIProcessor(config.ai),
+        KnowledgeLinker(config),
+    )
+    job = Job(
+        input_type="text",
+        payload={"title": "本地优先", "text": "本地优先能够控制隐私。处理链路应当可追踪。"},
+    )
+    item, note_path = asyncio.run(pipeline.process(job))
+    assert note_path.exists()
+    assert item.summary
+    assert database.list_items()[0]["title"] == "本地优先"
+
+
+def test_running_jobs_are_recovered_as_queued(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    config.prepare()
+    database = Database(config.database_path)
+    database.initialize()
+    job = Job(input_type="text", payload={"text": "hello"}, status=JobStatus.RUNNING)
+    database.save_job(job)
+    assert database.recoverable_job_ids() == [job.id]
+    assert database.get_job(job.id).status == JobStatus.QUEUED
+
+
+def test_registry_prefers_platform_specific_adapters(tmp_path: Path) -> None:
+    registry = build_registry(make_config(tmp_path))
+    assert registry.for_url("https://youtu.be/abc").source_type == "youtube"
+    assert registry.for_url("https://x.com/user/status/123").source_type == "twitter"
+    assert registry.for_url("https://mp.weixin.qq.com/s/example").source_type == "wechat_article"
+    assert registry.for_url("https://example.com/article").source_type == "webpage"
+    assert registry.for_file(Path("scan.pdf")).source_type == "pdf"
+    assert registry.for_file(Path("screen.png")).source_type == "image"
+    assert registry.for_file(Path("clip.mp4")).source_type == "wechat_video"
+
+
+def test_twitter_adapter_keeps_parent_and_quoted_context(
+    tmp_path: Path, monkeypatch
+) -> None:
+    html = """
+    <html><head>
+      <meta property="og:title" content="评论者 (@reply) on X">
+      <meta property="og:description" content="只有评论">
+    </head><body><main>
+      <article><a href="/root/status/100">time</a><p>原帖完整内容</p></article>
+      <article>
+        <p>当前评论</p>
+        <section><a href="/quoted/status/200">quoted</a><p>引用推文完整内容</p></section>
+        <a href="/reply/status/300">time</a>
+      </article>
+      <article><a href="/other/status/400">time</a><p>无关回复</p></article>
+    </main></body></html>
+    """
+
+    async def fake_fetch(self, url):
+        return html
+
+    monkeypatch.setattr(TwitterAdapter, "_fetch_browser_html", fake_fetch)
+    fetched = asyncio.run(
+        TwitterAdapter(make_config(tmp_path)).fetch(
+            "https://x.com/reply/status/300?s=52"
+        )
+    )
+    assert "原帖完整内容" in fetched.raw_content
+    assert "当前评论" in fetched.raw_content
+    assert "引用推文完整内容" in fetched.raw_content
+    assert "无关回复" not in fetched.raw_content
+    assert fetched.metadata["has_parent_context"] is True
+    assert fetched.metadata["context_posts"] == 2
+
+
+def test_twitter_adapter_uses_full_x_article_body(tmp_path: Path, monkeypatch) -> None:
+    html = """
+    <html><head>
+      <meta property="og:title" content="作者 (@author) on X">
+      <meta property="og:description" content="https://t.co/short">
+    </head><body><main><article>
+      <h1>长文标题</h1>
+      <div class="x-article-body"><p>这是完整的长文正文。</p></div>
+      <a href="/author/status/123">time</a>
+    </article></main></body></html>
+    """
+
+    async def fake_fetch(self, url):
+        return html
+
+    monkeypatch.setattr(TwitterAdapter, "_fetch_browser_html", fake_fetch)
+    fetched = asyncio.run(
+        TwitterAdapter(make_config(tmp_path)).fetch("https://x.com/author/status/123")
+    )
+    assert fetched.title == "长文标题"
+    assert "这是完整的长文正文" in fetched.raw_content
+    assert fetched.metadata["extraction_mode"] == "playwright"
+
+
+def test_twitter_adapter_detects_collapsed_x_article() -> None:
+    assert TwitterAdapter._needs_article_expansion(
+        "作者\n长文标题\n浏览量", paragraph_count=0, has_cover=True
+    )
+    assert not TwitterAdapter._needs_article_expansion(
+        "长文标题\n" + "完整正文" * 800,
+        paragraph_count=12,
+        has_cover=True,
+    )
+
+
+def test_wechat_video_adapter_uses_local_downloader(tmp_path: Path, monkeypatch) -> None:
+    config = make_config(tmp_path)
+    download_dir = config.data_dir / "originals" / "wechat_video"
+    download_dir.mkdir(parents=True)
+    video_path = download_dir / "video.mp4"
+    video_path.write_bytes(b"video")
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, path, json):
+            assert path == "/api/task/create_channels"
+            assert json["url"] == "https://weixin.qq.com/sph/example"
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {"id": "task-1", "file_path": str(video_path)},
+                },
+                request=httpx.Request("POST", "http://127.0.0.1:2022"),
+            )
+
+        async def get(self, path, params):
+            assert path == "/api/task/list"
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "list": [
+                            {
+                                "id": "task-1",
+                                "status": "done",
+                                "meta": {"req": {"labels": {"title": "真实视频"}}},
+                            }
+                        ]
+                    }
+                },
+                request=httpx.Request("GET", "http://127.0.0.1:2022"),
+            )
+
+    def fake_client(**kwargs):
+        assert kwargs["trust_env"] is False
+        return FakeClient()
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+    fetched = asyncio.run(
+        WeChatVideoAdapter(config).fetch("https://weixin.qq.com/sph/example")
+    )
+    assert fetched.title == "真实视频"
+    assert fetched.media_files == [str(video_path.resolve())]
+
+
+def test_wechat_video_disconnect_error_does_not_request_opening_link(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, path, json):
+            return httpx.Response(
+                200,
+                json={"code": 1, "msg": "初始化客户端 socket 失败"},
+                request=httpx.Request("POST", "http://127.0.0.1:2022"),
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: FakeClient())
+    try:
+        asyncio.run(
+            WeChatVideoAdapter(make_config(tmp_path)).fetch(
+                "https://weixin.qq.com/sph/example"
+            )
+        )
+    except RuntimeError as error:
+        assert "下载器尚未连接微信客户端" in str(error)
+        assert "打开该视频" not in str(error)
+    else:
+        raise AssertionError("expected disconnected downloader to fail")
+
+
+def test_wechat_prepare_does_not_depend_on_osascript() -> None:
+    source = Path("scripts/knowledge_mcp.py").read_text(encoding="utf-8")
+    assert "open_channels()" in source
+    assert '"获取详情失败: 请求超时"' in source
+    assert "/usr/bin/osascript" not in source
+    assert "/usr/bin/swift" not in source
+
+
+def load_knowledge_mcp(monkeypatch) -> dict:
+    monkeypatch.setenv("KNOWLEDGE_WECHAT_PROXY_PORT", "2023")
+    monkeypatch.setenv("KNOWLEDGE_NETWORK_SERVICE", "Wi-Fi")
+
+    class FakeFastMCP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def tool(self):
+            return lambda function: function
+
+        def run(self, *args, **kwargs):
+            pass
+
+    mcp_module = ModuleType("mcp")
+    server_module = ModuleType("mcp.server")
+    fastmcp_module = ModuleType("mcp.server.fastmcp")
+    fastmcp_module.FastMCP = FakeFastMCP
+    macos_module = ModuleType("macos_wechat_channels")
+    macos_module.open_channels = lambda: None
+    monkeypatch.setitem(sys.modules, "mcp", mcp_module)
+    monkeypatch.setitem(sys.modules, "mcp.server", server_module)
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", fastmcp_module)
+    monkeypatch.setitem(sys.modules, "macos_wechat_channels", macos_module)
+    return run_path(str(Path(__file__).parents[1] / "scripts" / "knowledge_mcp.py"))
+
+
+def test_wechat_proxy_parser(monkeypatch) -> None:
+    namespace = load_knowledge_mcp(monkeypatch)
+    subprocess_module = namespace["subprocess"]
+    monkeypatch.setattr(
+        subprocess_module,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="Enabled: Yes\nServer: 127.0.0.1\nPort: 7897\n"
+        ),
+    )
+    settings = namespace["_read_proxy"]("")
+    assert settings.enabled is True
+    assert settings.server == "127.0.0.1"
+    assert settings.port == "7897"
+
+
+def test_wechat_proxy_can_disable_empty_previous_settings(monkeypatch) -> None:
+    namespace = load_knowledge_mcp(monkeypatch)
+    commands = []
+    monkeypatch.setattr(
+        namespace["subprocess"],
+        "run",
+        lambda command, **kwargs: commands.append(command) or SimpleNamespace(stdout=""),
+    )
+
+    namespace["_configure_proxy"]("", "", "0", False)
+
+    assert commands == [
+        ["/usr/sbin/networksetup", "-setwebproxystate", "Wi-Fi", "off"]
+    ]
+
+
+def test_service_start_creates_log_directory(tmp_path: Path, monkeypatch) -> None:
+    namespace = load_knowledge_mcp(monkeypatch)
+    start_service = namespace["_start_service"]
+    start_globals = start_service.__globals__
+    reachable = iter([False, True])
+    popen_calls = []
+    monkeypatch.setitem(start_globals, "ROOT", tmp_path)
+    monkeypatch.setitem(start_globals, "_reachable", lambda url: next(reachable))
+    monkeypatch.setattr(
+        namespace["subprocess"],
+        "Popen",
+        lambda command, **kwargs: popen_calls.append((command, kwargs))
+        or SimpleNamespace(),
+    )
+
+    start_service(["service"], tmp_path, "http://127.0.0.1/health", "service.log")
+
+    assert (tmp_path / "data" / "service.log").exists()
+    assert popen_calls[0][1]["stdout"].closed is True
+
+
+def test_wechat_proxy_restores_previous_state_after_error(monkeypatch) -> None:
+    namespace = load_knowledge_mcp(monkeypatch)
+    proxy_settings = namespace["ProxySettings"]
+    context = namespace["_temporary_wechat_proxy"]
+    calls = []
+    previous = {
+        "": proxy_settings(True, "127.0.0.1", "7897"),
+        "secure": proxy_settings(False, "proxy.example", "8080"),
+    }
+    context_globals = context.__wrapped__.__globals__
+    monkeypatch.setitem(context_globals, "_read_proxy", lambda secure: previous[secure])
+    monkeypatch.setitem(
+        context_globals,
+        "_configure_proxy",
+        lambda secure, server, port, enabled: calls.append(
+            (secure, server, port, enabled)
+        ),
+    )
+
+    try:
+        with context():
+            raise RuntimeError("simulated ingestion failure")
+    except RuntimeError:
+        pass
+
+    assert calls == [
+        ("", "127.0.0.1", "2023", True),
+        ("secure", "127.0.0.1", "2023", True),
+        ("", "127.0.0.1", "7897", True),
+        ("secure", "proxy.example", "8080", False),
+    ]
+
+
+def test_ai_transcodes_hevc_mp4_for_vision_model(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"hevc")
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[0] == "ffprobe":
+            return SimpleNamespace(stdout="hevc\n")
+        Path(command[-1]).write_bytes(b"h264")
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr("backend.processors.ai.subprocess.run", fake_run)
+    prepared = AIProcessor._prepare_video(source)
+    try:
+        assert prepared != source
+        assert [command[0] for command in commands] == ["ffprobe", "ffmpeg"]
+    finally:
+        prepared.unlink(missing_ok=True)
+
+
+def test_uploaded_file_keeps_original_source_url(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    source = tmp_path / "note.txt"
+    source.write_text("原始内容", encoding="utf-8")
+    pipeline = ContentPipeline(
+        build_registry(config),
+        Database(config.database_path),
+        ObsidianWriter(config),
+        AIProcessor(config.ai),
+        KnowledgeLinker(config),
+    )
+    item = asyncio.run(
+        pipeline._extract(
+            Job(
+                input_type="file",
+                payload={
+                    "path": str(source),
+                    "source_url": "https://example.com/original",
+                },
+            )
+        )
+    )
+    assert item.source_url == "https://example.com/original"
+
+
+def test_successful_video_ingest_deletes_source_when_enabled(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    config.delete_video_after_ingest = True
+    config.prepare()
+    source = config.data_dir / "originals" / "uploads" / "video.mp4"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"video")
+    database = Database(config.database_path)
+    database.initialize()
+
+    class FakeVideoAI:
+        supports_video = True
+
+        async def analyze(self, item):
+            return AIProcessor._fallback("视频内容")
+
+    pipeline = ContentPipeline(
+        build_registry(config),
+        database,
+        ObsidianWriter(config),
+        FakeVideoAI(),
+        KnowledgeLinker(config),
+    )
+    item, note_path = asyncio.run(
+        pipeline.process(Job(input_type="file", payload={"path": str(source)}))
+    )
+    assert note_path.exists()
+    assert not source.exists()
+    assert item.media_files == []
+    assert item.metadata["deleted_video_files"] == ["video.mp4"]
+
+
+def test_ingest_script_classifies_url_file_and_text(tmp_path: Path) -> None:
+    classify_input = run_path(
+        str(Path(__file__).parents[1] / "scripts" / "ingest.py")
+    )["classify_input"]
+    source = tmp_path / "note.txt"
+    source.write_text("内容", encoding="utf-8")
+    assert classify_input("https://example.com") == ("url", "https://example.com")
+    assert classify_input(str(source)) == ("file", source)
+    assert classify_input("一段文字") == ("text", "一段文字")
