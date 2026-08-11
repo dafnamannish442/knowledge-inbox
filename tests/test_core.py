@@ -4,8 +4,7 @@ import asyncio
 import sys
 from pathlib import Path
 from runpy import run_path
-from types import SimpleNamespace
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import httpx
 

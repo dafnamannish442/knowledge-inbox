@@ -15,7 +15,6 @@ import httpx
 from backend.config import AIConfig
 from backend.models import ContentItem
 
-
 SYSTEM_PROMPT = """你是个人知识库编辑。根据输入内容输出严格 JSON，不要 Markdown 代码围栏。
 字段：
 summary: 一句话总结，不超过 80 字；

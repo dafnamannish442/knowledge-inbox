@@ -7,7 +7,6 @@ from backend.models import Job, JobStatus
 from backend.processors import ContentPipeline
 from backend.storage import Database
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from backend.adapters.base import FetchedContent, SourceAdapter
+
+
 class YouTubeAdapter(SourceAdapter):
     source_type = "youtube"
     _pattern = re.compile(r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)/")

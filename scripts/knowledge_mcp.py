@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import Iterator
 
 import httpx
-from mcp.server.fastmcp import FastMCP
 from macos_wechat_channels import open_channels
-
+from mcp.server.fastmcp import FastMCP
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_URL = os.getenv("KNOWLEDGE_API_URL", "http://127.0.0.1:8787")

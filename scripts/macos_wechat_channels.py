@@ -6,7 +6,6 @@ import sys
 import time
 from pathlib import Path
 
-
 APPLICATION_SERVICES = Path(
     "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices"
 )
