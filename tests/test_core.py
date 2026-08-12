@@ -17,7 +17,7 @@ from backend.adapters.remote_media import RemoteMediaAdapter
 from backend.adapters.twitter import TwitterAdapter
 from backend.adapters.vimeo import VimeoAdapter
 from backend.adapters.wechat_video import WeChatVideoAdapter
-from backend.api.routes import _choose_macos_folder, ingest
+from backend.api.routes import _choose_macos_folder, ingest, open_job_folder
 from backend.config import AIConfig, AppConfig, get_config, save_storage_settings
 from backend.models import ContentItem, IngestRequest, Job, JobStatus
 from backend.processors.ai import AIProcessor
@@ -684,7 +684,10 @@ def test_frontend_uses_one_unified_inbox() -> None:
     assert 'id="storage-dialog"' in html
     assert "/api/settings/storage" in html
     assert "/api/settings/storage/select" in html
+    assert "/open-folder" in html
     assert 'id="choose-folder"' in html
+    assert 'id="language-button"' in html
+    assert "knowledge-language" in html
     assert "if (!storageConfigured) event.preventDefault()" in html
     assert all(old_id not in html for old_id in ("url-form", "file-form", "text-form"))
 
@@ -767,6 +770,41 @@ def test_macos_folder_picker_returns_path_or_cancel(monkeypatch) -> None:
         ),
     )
     assert _choose_macos_folder() is None
+
+
+def test_open_job_folder_uses_only_current_vault(tmp_path: Path, monkeypatch) -> None:
+    config = make_config(tmp_path)
+    config.prepare()
+    database = Database(config.database_path)
+    database.initialize()
+    note = config.vault_dir / config.inbox_folder / "note.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text("# Note", encoding="utf-8")
+    job = Job(
+        input_type="text",
+        payload={"text": "Note"},
+        status=JobStatus.SUCCEEDED,
+        note_path=str(note),
+    )
+    database.save_job(job)
+    opened = []
+    monkeypatch.setattr("backend.api.routes._open_folder", opened.append)
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={"x-knowledge-ui": "1"},
+        app=SimpleNamespace(state=SimpleNamespace(config=config, database=database)),
+    )
+
+    assert asyncio.run(open_job_folder(job.id, request)) == {"opened": True}
+    assert opened == [note.parent.resolve()]
+
+    request.headers = {}
+    try:
+        asyncio.run(open_job_folder(job.id, request))
+    except HTTPException as error:
+        assert error.status_code == 403
+    else:
+        raise AssertionError("expected a non-UI request to be rejected")
 
 
 def test_cross_harness_skills_support_automatic_forwarded_content() -> None:

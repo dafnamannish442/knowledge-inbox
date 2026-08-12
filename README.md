@@ -1,5 +1,7 @@
 # Knowledge Ingestion Service
 
+**English** | [简体中文](README.zh-CN.md)
+
 Harness-neutral, local-first knowledge ingestion for Obsidian and other local retrieval
 tools. It turns links, text, videos, screenshots, PDFs, and local files into structured
 Markdown knowledge cards. Hermes, Codex, OpenClaw, and other MCP clients share the same
@@ -65,6 +67,9 @@ uvicorn backend.main:app --host 127.0.0.1 --port 8787
 Open <http://127.0.0.1:8787> for the universal inbox: paste a link or text, or
 drop a video, screenshot, PDF, or local file into the same input area. Source detection,
 AI processing, classification, tags, linking, and Obsidian output are automatic.
+Use the **EN / 中** button to switch the web interface. Completed entries under
+**Recently generated** can be clicked to open their knowledge-card folder in the system
+file manager.
 
 On first launch on macOS, choose an existing Obsidian Vault or Markdown folder with the
 native folder picker, then choose the card subfolder. The service verifies write access and stores only these two

@@ -78,6 +78,17 @@ def _choose_macos_folder(initial_path: str | None = None) -> str | None:
     return result.stdout.strip().rstrip("/")
 
 
+def _open_folder(path: Path) -> None:
+    command = (
+        ["/usr/bin/open", "-a", "Finder", str(path)]
+        if sys.platform == "darwin"
+        else ["explorer", str(path)]
+        if sys.platform == "win32"
+        else ["xdg-open", str(path)]
+    )
+    subprocess.run(command, check=True)
+
+
 @router.post("/settings/storage/select")
 async def select_storage_folder(payload: dict, request: Request) -> dict[str, object]:
     try:
@@ -195,6 +206,35 @@ async def get_job(job_id: str, request: Request) -> Job:
 @router.get("/items")
 async def list_items(request: Request, limit: int = 50) -> list[dict[str, str | None]]:
     return await asyncio.to_thread(request.app.state.database.list_items, min(max(limit, 1), 200))
+
+
+@router.post("/jobs/{job_id}/open-folder")
+async def open_job_folder(job_id: str, request: Request) -> dict[str, bool]:
+    try:
+        is_loopback = ipaddress.ip_address(request.client.host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback or request.headers.get("x-knowledge-ui") != "1":
+        raise HTTPException(403, "打开文件夹仅允许本机页面调用")
+    job = await asyncio.to_thread(request.app.state.database.get_job, job_id)
+    if not job or not job.note_path:
+        raise HTTPException(404, "知识卡片不存在")
+    config = request.app.state.config
+    if not config.vault_dir:
+        raise HTTPException(409, "请先配置知识库文件夹")
+    note_path = Path(job.note_path).resolve()
+    notes_root = (config.vault_dir / config.inbox_folder).resolve()
+    try:
+        note_path.relative_to(notes_root)
+    except ValueError as error:
+        raise HTTPException(403, "知识卡片不在当前知识库目录内") from error
+    if note_path.suffix.lower() != ".md" or not note_path.is_file():
+        raise HTTPException(404, "知识卡片文件不存在")
+    try:
+        await asyncio.to_thread(_open_folder, note_path.parent)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise HTTPException(500, "无法打开知识库文件夹") from error
+    return {"opened": True}
 
 
 @router.post("/telegram", response_model=Job, status_code=status.HTTP_202_ACCEPTED)
