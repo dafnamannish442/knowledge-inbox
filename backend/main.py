@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Knowledge Ingestion Service",
+    title="Knowledge Inbox",
     version="0.3.0",
     lifespan=lifespan,
 )

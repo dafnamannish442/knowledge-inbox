@@ -131,10 +131,7 @@
     h2 { margin:0; font-size:15px; }
     .section-head span { color:var(--muted); font-size:12px; }
     #jobs { display:grid; }
-    .job { width:100%; display:grid; grid-template-columns:82px minmax(0,1fr) auto; align-items:center; gap:12px; padding:13px 0; border:0; border-bottom:1px solid #20242a; background:transparent; color:var(--text); text-align:left; }
-    .job-open { cursor:pointer; }
-    .job-open:hover { background:#14171c; }
-    .job:disabled { cursor:default; opacity:1; }
+    .job { width:100%; display:grid; grid-template-columns:82px minmax(0,1fr) auto 64px; align-items:center; gap:12px; padding:13px 0; border-bottom:1px solid #20242a; color:var(--text); text-align:left; }
     .status { font-size:11px; font-weight:800; letter-spacing:.04em; }
     .succeeded { color:var(--success); }
     .failed { color:var(--danger); }
@@ -144,6 +141,9 @@
     .job-detail { display:block; }
     .job-detail.error { color:#ff9b9b; white-space:normal; }
     time { color:var(--muted); font-size:12px; }
+    .open-job { min-width:64px; min-height:34px; padding:0 12px; border:1px solid var(--line); border-radius:9px; background:#20242a; color:var(--text); font-weight:700; cursor:pointer; }
+    .open-job:hover { border-color:#7253bd; background:var(--accent); }
+    .job-action { width:64px; }
     dialog { width:min(540px,calc(100% - 28px)); padding:0; border:1px solid var(--line); border-radius:20px; background:var(--panel-strong); color:var(--text); box-shadow:0 28px 90px #000b; }
     dialog::backdrop { background:#050609c9; backdrop-filter:blur(5px); }
     .settings-form { padding:26px; }
@@ -170,7 +170,7 @@
       .attachment { max-width:calc(100% - 36px); margin-inline:18px; }
       .attach-file span { display:none; }
       .workflow { grid-template-columns:1fr; margin-top:36px; }
-      .job { grid-template-columns:72px minmax(0,1fr); }
+      .job { grid-template-columns:72px minmax(0,1fr) 64px; }
       .job time { display:none; }
     }
   </style>
@@ -256,8 +256,8 @@ let storageConfigured = false;
 let language = localStorage.getItem('knowledge-language') === 'en' ? 'en' : 'zh';
 
 const messages = {
-  zh:{settings:'设置',connecting:'连接中',storageTitle:'选择知识库位置',storageCopy:'只需设置一次。知识卡片会作为标准 Markdown 写入这个文件夹。',vaultLabel:'Obsidian Vault 或 Markdown 文件夹',chooseFolder:'选择文件夹…',openingPicker:'正在打开…',pathHelp:'点击“选择文件夹”打开系统选择器；路径输入用于其他系统或 Docker。',subfolderLabel:'卡片子目录',subfolderHelp:'相对于上面的知识库目录；不存在时会自动创建。',cancel:'取消',saveSettings:'保存并开始使用',heroLine1:'随手丢进来，',heroLine2:'剩下交给系统',lead:'粘贴链接或文字，拖入视频、截图、PDF、本地文件。系统会自动识别、总结、分类、关联并写入你的知识库。',inputLabel:'要保存的链接、文字或文件',inputPlaceholder:'粘贴一个链接或一段文字…',fileSourcePlaceholder:'可选：粘贴这个文件的原始链接…',removeFile:'移除文件',addFile:'添加文件',generate:'生成知识卡片',hint:'也可以把文件直接拖进输入框，或粘贴剪贴板里的截图',workflowLabel:'使用方式',mobileTitle:'手机：直接发给你的 Agent',mobileCopy:'在 Telegram、Discord 等 IM 里转发内容，Agent 会调用同一个摄入服务自动归档。',desktopTitle:'电脑：使用这个收件箱',desktopCopy:'现在支持粘贴和拖入；浏览器扩展会作为下一步，减少复制链接的动作。',recent:'最近生成',autoRefresh:'自动刷新',saved:'知识库位置已保存',configureFirst:'请先配置知识库文件夹',submitting:'正在提交…',received:'已收到，正在生成知识卡片',submitFailed:'提交失败',queued:'排队中',running:'处理中',succeeded:'已归档',failed:'失败',textRecord:'文字记录',written:'已写入 Obsidian · 点击打开文件夹',empty:'还没有知识卡片，把第一条内容丢进来吧。',online:'服务在线',processing:'处理中',offline:'服务未连接',settingsFailed:'设置读取失败',openFolder:'打开知识库文件夹',folderOpened:'已打开知识库文件夹',folderFailed:'打开文件夹失败'},
-  en:{settings:'Settings',connecting:'Connecting',storageTitle:'Choose knowledge storage',storageCopy:'Set this once. Knowledge cards are saved here as standard Markdown files.',vaultLabel:'Obsidian Vault or Markdown folder',chooseFolder:'Choose folder…',openingPicker:'Opening…',pathHelp:'Use the system folder picker, or enter an absolute path for Docker and other systems.',subfolderLabel:'Card subfolder',subfolderHelp:'Relative to the folder above; it will be created when missing.',cancel:'Cancel',saveSettings:'Save and continue',heroLine1:'Drop anything in.',heroLine2:'The system handles the rest.',lead:'Paste a link or text, or drop a video, screenshot, PDF, or local file. The system identifies, summarizes, classifies, links, and saves it automatically.',inputLabel:'Link, text, or file to save',inputPlaceholder:'Paste a link or some text…',fileSourcePlaceholder:'Optional: paste the original URL for this file…',removeFile:'Remove file',addFile:'Add file',generate:'Create knowledge card',hint:'You can also drop a file here or paste a screenshot from the clipboard.',workflowLabel:'How to use',mobileTitle:'Mobile: send it to your Agent',mobileCopy:'Forward content in Telegram, Discord, or another IM. Your Agent calls the same ingestion service and archives it.',desktopTitle:'Desktop: use this inbox',desktopCopy:'Paste and drag-and-drop are supported now. A browser extension is a possible next client.',recent:'Recently generated',autoRefresh:'Auto refresh',saved:'Knowledge storage saved',configureFirst:'Choose a knowledge folder first',submitting:'Submitting…',received:'Received. Creating the knowledge card now.',submitFailed:'Submission failed',queued:'Queued',running:'Processing',succeeded:'Archived',failed:'Failed',textRecord:'Text note',written:'Saved to Obsidian · click to open folder',empty:'No knowledge cards yet. Drop in the first one.',online:'Service online',processing:'Processing',offline:'Service unavailable',settingsFailed:'Could not load settings',openFolder:'Open knowledge folder',folderOpened:'Knowledge folder opened',folderFailed:'Could not open folder'}
+  zh:{settings:'设置',connecting:'连接中',storageTitle:'选择知识库位置',storageCopy:'只需设置一次。知识卡片会作为标准 Markdown 写入这个文件夹。',vaultLabel:'Obsidian Vault 或 Markdown 文件夹',chooseFolder:'选择文件夹…',openingPicker:'正在打开…',pathHelp:'点击“选择文件夹”打开系统选择器；路径输入用于其他系统或 Docker。',subfolderLabel:'卡片子目录',subfolderHelp:'相对于上面的知识库目录；不存在时会自动创建。',cancel:'取消',saveSettings:'保存并开始使用',heroLine1:'随手丢进来，',heroLine2:'剩下交给系统',lead:'粘贴链接或文字，拖入视频、截图、PDF、本地文件。系统会自动识别、总结、分类、关联并写入你的知识库。',inputLabel:'要保存的链接、文字或文件',inputPlaceholder:'粘贴一个链接或一段文字…',fileSourcePlaceholder:'可选：粘贴这个文件的原始链接…',removeFile:'移除文件',addFile:'添加文件',generate:'生成知识卡片',hint:'也可以把文件直接拖进输入框，或粘贴剪贴板里的截图',workflowLabel:'使用方式',mobileTitle:'手机：直接发给你的 Agent',mobileCopy:'在 Telegram、Discord 等 IM 里转发内容，Agent 会调用同一个摄入服务自动归档。',desktopTitle:'电脑：使用这个收件箱',desktopCopy:'现在支持粘贴和拖入；浏览器扩展会作为下一步，减少复制链接的动作。',recent:'最近生成',autoRefresh:'自动刷新',saved:'知识库位置已保存',configureFirst:'请先配置知识库文件夹',submitting:'正在提交…',received:'已收到，正在生成知识卡片',submitFailed:'提交失败',queued:'排队中',running:'处理中',succeeded:'已归档',failed:'失败',textRecord:'文字记录',written:'已写入 Obsidian',empty:'还没有知识卡片，把第一条内容丢进来吧。',online:'服务在线',processing:'处理中',offline:'服务未连接',settingsFailed:'设置读取失败',open:'打开',openFolder:'打开知识库文件夹',folderOpened:'已打开知识库文件夹',folderFailed:'打开文件夹失败'},
+  en:{settings:'Settings',connecting:'Connecting',storageTitle:'Choose knowledge storage',storageCopy:'Set this once. Knowledge cards are saved here as standard Markdown files.',vaultLabel:'Obsidian Vault or Markdown folder',chooseFolder:'Choose folder…',openingPicker:'Opening…',pathHelp:'Use the system folder picker, or enter an absolute path for Docker and other systems.',subfolderLabel:'Card subfolder',subfolderHelp:'Relative to the folder above; it will be created when missing.',cancel:'Cancel',saveSettings:'Save and continue',heroLine1:'Drop anything in.',heroLine2:'The system handles the rest.',lead:'Paste a link or text, or drop a video, screenshot, PDF, or local file. The system identifies, summarizes, classifies, links, and saves it automatically.',inputLabel:'Link, text, or file to save',inputPlaceholder:'Paste a link or some text…',fileSourcePlaceholder:'Optional: paste the original URL for this file…',removeFile:'Remove file',addFile:'Add file',generate:'Create knowledge card',hint:'You can also drop a file here or paste a screenshot from the clipboard.',workflowLabel:'How to use',mobileTitle:'Mobile: send it to your Agent',mobileCopy:'Forward content in Telegram, Discord, or another IM. Your Agent calls the same ingestion service and archives it.',desktopTitle:'Desktop: use this inbox',desktopCopy:'Paste and drag-and-drop are supported now. A browser extension is a possible next client.',recent:'Recently generated',autoRefresh:'Auto refresh',saved:'Knowledge storage saved',configureFirst:'Choose a knowledge folder first',submitting:'Submitting…',received:'Received. Creating the knowledge card now.',submitFailed:'Submission failed',queued:'Queued',running:'Processing',succeeded:'Archived',failed:'Failed',textRecord:'Text note',written:'Saved to Obsidian',empty:'No knowledge cards yet. Drop in the first one.',online:'Service online',processing:'Processing',offline:'Service unavailable',settingsFailed:'Could not load settings',open:'Open',openFolder:'Open knowledge folder',folderOpened:'Knowledge folder opened',folderFailed:'Could not open folder'}
 };
 const t = key => messages[language][key] || key;
 
@@ -479,11 +479,12 @@ async function refresh() {
     $('#health').classList.add('online');
     $('#health').textContent = health.queue_size ? `${t('processing')} ${health.queue_size}` : t('online');
     $('#jobs').innerHTML = jobs.length ? jobs.map(job => `
-      <button class="job ${job.note_path ? 'job-open' : ''}" type="button" ${job.note_path ? `data-open-job="${esc(job.id)}" title="${esc(t('openFolder'))}"` : 'disabled'}>
+      <div class="job">
         <span class="status ${esc(job.status)}">${t(job.status) || esc(job.status)}</span>
         <span class="job-title" title="${esc(jobLabel(job))}">${esc(jobLabel(job))}${job.error ? `<span class="job-detail error">${esc(job.error)}</span>` : job.note_path ? `<span class="job-detail">${t('written')}</span>` : ''}</span>
         <time>${new Date(job.created_at).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}</time>
-      </button>`).join('') : `<p class="empty">${t('empty')}</p>`;
+        ${job.note_path ? `<button class="open-job" type="button" data-open-job="${esc(job.id)}" title="${esc(t('openFolder'))}">${t('open')}</button>` : '<span class="job-action" aria-hidden="true"></span>'}
+      </div>`).join('') : `<p class="empty">${t('empty')}</p>`;
   } catch {
     $('#health').classList.remove('online');
     $('#health').textContent = t('offline');

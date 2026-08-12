@@ -1,4 +1,4 @@
-# Knowledge Ingestion Service
+# Knowledge Inbox
 
 [English](README.md) | **简体中文**
 

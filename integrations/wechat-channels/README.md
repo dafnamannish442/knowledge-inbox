@@ -31,7 +31,7 @@ resolve WeChat Channels share links locally. It is not required by the core serv
 
    ```yaml
    download:
-     dir: /absolute/path/hermes-knowledge-ingestion/data/originals/wechat_video
+     dir: /absolute/path/knowledge-inbox/data/originals/wechat_video
    ```
 
 4. Configure the MCP tool:
