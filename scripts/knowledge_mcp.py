@@ -29,7 +29,7 @@ DOWNLOADER_DIR = Path(
 ).expanduser()
 
 mcp = FastMCP(
-    "hermes-knowledge-ingestion",
+    "knowledge-ingestion",
     instructions="Ingest links, local files, videos, screenshots, or text into Obsidian.",
 )
 
@@ -204,6 +204,32 @@ def _wechat_client_needs_refresh(output: str) -> bool:
             "获取详情失败: 请求超时",
         )
     )
+
+
+@mcp.tool()
+def knowledge_list_capabilities() -> dict[str, object]:
+    """List supported source and input types for this knowledge ingestion service."""
+    _ensure_backend()
+    response = httpx.get(
+        f"{BACKEND_URL}/api/capabilities",
+        timeout=10,
+        trust_env=False,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+@mcp.tool()
+def knowledge_get_job(job_id: str) -> dict[str, object]:
+    """Return the current status, error, item ID, and note path for an ingestion job."""
+    _ensure_backend()
+    response = httpx.get(
+        f"{BACKEND_URL}/api/jobs/{job_id}",
+        timeout=10,
+        trust_env=False,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 @mcp.tool()

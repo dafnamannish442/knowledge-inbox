@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 from runpy import run_path
@@ -448,6 +449,52 @@ def load_knowledge_mcp(monkeypatch) -> dict:
     monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", fastmcp_module)
     monkeypatch.setitem(sys.modules, "macos_wechat_channels", macos_module)
     return run_path(str(Path(__file__).parents[1] / "scripts" / "knowledge_mcp.py"))
+
+
+def test_mcp_exposes_cross_harness_tools(monkeypatch) -> None:
+    namespace = load_knowledge_mcp(monkeypatch)
+    assert callable(namespace["knowledge_ingest"])
+    assert callable(namespace["knowledge_get_job"])
+    assert callable(namespace["knowledge_list_capabilities"])
+    assert callable(namespace["knowledge_wechat_prepare"])
+
+
+def test_mcp_capabilities_are_harness_neutral(monkeypatch) -> None:
+    namespace = load_knowledge_mcp(monkeypatch)
+    monkeypatch.setitem(namespace["knowledge_list_capabilities"].__globals__, "_ensure_backend", lambda: None)
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "service": "knowledge-ingestion",
+                "version": "0.3.0",
+                "source_types": ["webpage", "podcast", "vimeo"],
+                "transports": ["rest", "mcp-stdio"],
+            }
+
+    monkeypatch.setattr(namespace["httpx"], "get", lambda *args, **kwargs: Response())
+    result = namespace["knowledge_list_capabilities"]()
+    assert result["service"] == "knowledge-ingestion"
+    assert "podcast" in result["source_types"]
+    assert "Hermes" not in json.dumps(result)
+
+
+def test_mcp_get_job_returns_backend_state(monkeypatch) -> None:
+    namespace = load_knowledge_mcp(monkeypatch)
+    monkeypatch.setitem(namespace["knowledge_get_job"].__globals__, "_ensure_backend", lambda: None)
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"id": "job-1", "status": "succeeded", "note_path": "/vault/note.md"}
+
+    monkeypatch.setattr(namespace["httpx"], "get", lambda *args, **kwargs: Response())
+    assert namespace["knowledge_get_job"]("job-1")["note_path"] == "/vault/note.md"
 
 
 def test_wechat_proxy_parser(monkeypatch) -> None:

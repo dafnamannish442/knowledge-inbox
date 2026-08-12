@@ -1,17 +1,18 @@
-# Hermes Knowledge Ingestion
+# Knowledge Ingestion Service
 
-Local-first, plugin-based knowledge ingestion for Hermes, Obsidian, and other local
-retrieval tools. It turns links, text, videos, screenshots, PDFs, and local files into
-structured Markdown knowledge cards and saves them to an Obsidian Vault.
+Harness-neutral, local-first knowledge ingestion for Obsidian and other local retrieval
+tools. It turns links, text, videos, screenshots, PDFs, and local files into structured
+Markdown knowledge cards. Hermes, Codex, OpenClaw, and other MCP clients share the same
+adapters and processing service.
 
-> Current release: `0.2.0`. Web and file ingestion run cross-platform. WeChat Channels
+> Current release: `0.3.0`. Web and file ingestion run cross-platform. WeChat Channels
 > downloading is an optional, experimental macOS integration that requires the desktop
 > WeChat client and a local TLS proxy.
 
 ## How it works
 
 ```text
-Hermes Skill / CLI / Web / Telegram
+Hermes / Codex / OpenClaw / CLI / Web / Telegram
                   |
               MCP / FastAPI
                   |
@@ -55,7 +56,7 @@ Tesseract.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[media,browser,hermes,dev]"
+pip install -e ".[media,browser,mcp,dev]"
 playwright install chromium
 cp config.example.yaml config.yaml
 uvicorn backend.main:app --host 127.0.0.1 --port 8787
@@ -101,19 +102,21 @@ Knowledge linking uses `qmd` when available. If `qmd` is not installed, it falls
 to lexical matching over the latest 1,000 Markdown notes in the Vault. Cards are written
 to a temporary file and atomically replaced so an indexer never sees a partial note.
 
-## Hermes MCP tool
+## MCP tools and Harness clients
 
-`scripts/knowledge_mcp.py` exposes two tools:
+`scripts/knowledge_mcp.py` is a harness-neutral stdio MCP server. It exposes:
 
 - `knowledge_ingest`: ingest a URL, local file, or text and wait for the knowledge card
   to finish.
+- `knowledge_get_job`: inspect the current state of a known ingestion job.
+- `knowledge_list_capabilities`: list supported sources and input types.
 - `knowledge_wechat_prepare`: refresh the local WeChat Channels window only when the
   client connection needs recovery.
 
-In Hermes, configure the MCP command to use this repository's virtual-environment Python
-and the absolute path to `scripts/knowledge_mcp.py`. Copy or symlink
-`hermes-skill/personal-knowledge-ingestion` into the Hermes skills directory. Hermes can
-then route intents such as “save”, “archive”, and “ingest” to this tool.
+Each Harness launches the same server with a Python environment that includes the `hermes`
+extra and the absolute path to `scripts/knowledge_mcp.py`. Client-specific Skills are in
+`clients/hermes`, `clients/codex`, and `clients/openclaw`; they contain routing guidance,
+not duplicate adapters. See `clients/README.md` for installation commands.
 
 ## Docker
 

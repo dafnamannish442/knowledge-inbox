@@ -38,8 +38,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Personal Knowledge Ingestion System",
-    version="0.1.0",
+    title="Knowledge Ingestion Service",
+    version="0.3.0",
     lifespan=lifespan,
 )
 app.include_router(router)

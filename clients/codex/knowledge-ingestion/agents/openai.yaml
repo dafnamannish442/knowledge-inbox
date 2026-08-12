@@ -1,0 +1,4 @@
+interface:
+  display_name: "Knowledge Ingestion"
+  short_description: "Save links, files, and media to Obsidian"
+  default_prompt: "Use $knowledge-ingestion to save this content to my knowledge base."

@@ -7,7 +7,7 @@ Bug fixes, documentation improvements, and new source adapters are welcome.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[media,browser,hermes,dev]"
+pip install -e ".[media,browser,mcp,dev]"
 pytest -q
 ruff check backend scripts tests
 ```

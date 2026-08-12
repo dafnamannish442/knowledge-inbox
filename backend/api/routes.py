@@ -11,6 +11,22 @@ from backend.models import IngestRequest, Job
 
 router = APIRouter(prefix="/api")
 
+SOURCE_TYPES = [
+    "webpage",
+    "wechat_article",
+    "twitter",
+    "youtube",
+    "podcast",
+    "vimeo",
+    "remote_media",
+    "pdf",
+    "image",
+    "local_file",
+    "wechat_video",
+    "telegram",
+    "text",
+]
+
 
 @router.get("/health")
 async def health(request: Request) -> dict[str, object]:
@@ -18,6 +34,18 @@ async def health(request: Request) -> dict[str, object]:
         "status": "ok",
         "queue_size": request.app.state.worker.queue.qsize(),
         "ai_enabled": request.app.state.config.ai.enabled,
+    }
+
+
+@router.get("/capabilities")
+async def capabilities() -> dict[str, object]:
+    return {
+        "service": "knowledge-ingestion",
+        "version": "0.3.0",
+        "source_types": SOURCE_TYPES,
+        "input_types": ["url", "file", "text"],
+        "transports": ["rest", "mcp-stdio"],
+        "outputs": ["obsidian_markdown", "sqlite"],
     }
 
 
