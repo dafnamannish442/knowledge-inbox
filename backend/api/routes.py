@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -48,7 +51,52 @@ async def get_storage_settings(request: Request) -> dict[str, object]:
         "vault_dir": str(config.vault_dir) if config.vault_dir else "",
         "inbox_folder": config.inbox_folder,
         "managed_by_environment": bool(os.getenv("OBSIDIAN_VAULT_DIR")),
+        "native_folder_picker": sys.platform == "darwin"
+        and not os.getenv("OBSIDIAN_VAULT_DIR"),
     }
+
+
+def _choose_macos_folder(initial_path: str | None = None) -> str | None:
+    script = 'POSIX path of (choose folder with prompt "选择 Obsidian Vault 或 Markdown 文件夹"'
+    if initial_path:
+        script += ' default location POSIX file (system attribute "KNOWLEDGE_PICKER_DEFAULT")'
+    script += ")"
+    environment = os.environ.copy()
+    if initial_path:
+        environment["KNOWLEDGE_PICKER_DEFAULT"] = initial_path
+    result = subprocess.run(
+        ["/usr/bin/osascript", "-e", script],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env=environment,
+    )
+    if result.returncode:
+        if "User canceled" in result.stderr or "-128" in result.stderr:
+            return None
+        raise RuntimeError(result.stderr.strip() or "系统文件夹选择器调用失败")
+    return result.stdout.strip().rstrip("/")
+
+
+@router.post("/settings/storage/select")
+async def select_storage_folder(payload: dict, request: Request) -> dict[str, object]:
+    try:
+        is_loopback = ipaddress.ip_address(request.client.host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback or request.headers.get("x-knowledge-ui") != "1":
+        raise HTTPException(403, "目录选择器仅允许本机设置页面调用")
+    if sys.platform != "darwin":
+        raise HTTPException(501, "当前系统不支持原生目录选择器，请输入绝对路径")
+    if os.getenv("OBSIDIAN_VAULT_DIR"):
+        raise HTTPException(409, "知识库路径由 OBSIDIAN_VAULT_DIR 管理")
+    try:
+        selected = await asyncio.to_thread(
+            _choose_macos_folder, str(payload.get("initial_path") or "") or None
+        )
+    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+        raise HTTPException(500, str(error)) from error
+    return {"selected": bool(selected), "path": selected or ""}
 
 
 @router.put("/settings/storage")

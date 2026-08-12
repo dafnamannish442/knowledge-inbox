@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 import sys
 from pathlib import Path
 from runpy import run_path
@@ -16,7 +17,7 @@ from backend.adapters.remote_media import RemoteMediaAdapter
 from backend.adapters.twitter import TwitterAdapter
 from backend.adapters.vimeo import VimeoAdapter
 from backend.adapters.wechat_video import WeChatVideoAdapter
-from backend.api.routes import ingest
+from backend.api.routes import _choose_macos_folder, ingest
 from backend.config import AIConfig, AppConfig, get_config, save_storage_settings
 from backend.models import ContentItem, IngestRequest, Job, JobStatus
 from backend.processors.ai import AIProcessor
@@ -682,6 +683,8 @@ def test_frontend_uses_one_unified_inbox() -> None:
     assert "extractSingleUrl" in html
     assert 'id="storage-dialog"' in html
     assert "/api/settings/storage" in html
+    assert "/api/settings/storage/select" in html
+    assert 'id="choose-folder"' in html
     assert "if (!storageConfigured) event.preventDefault()" in html
     assert all(old_id not in html for old_id in ("url-form", "file-form", "text-form"))
 
@@ -746,6 +749,24 @@ def test_ingest_rejects_unconfigured_storage(tmp_path: Path) -> None:
         assert "配置知识库文件夹" in error.detail
     else:
         raise AssertionError("expected unconfigured ingestion to fail")
+
+
+def test_macos_folder_picker_returns_path_or_cancel(monkeypatch) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="/tmp/Vault/\n", stderr=""),
+    )
+    assert _choose_macos_folder() == "/tmp/Vault"
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1, stdout="", stderr="execution error: User canceled. (-128)"
+        ),
+    )
+    assert _choose_macos_folder() is None
 
 
 def test_cross_harness_skills_support_automatic_forwarded_content() -> None:

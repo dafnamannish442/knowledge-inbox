@@ -66,10 +66,11 @@ Open <http://127.0.0.1:8787> for the universal inbox: paste a link or text, or
 drop a video, screenshot, PDF, or local file into the same input area. Source detection,
 AI processing, classification, tags, linking, and Obsidian output are automatic.
 
-On first launch, enter the absolute path to an existing Obsidian Vault or Markdown folder
-and choose the card subfolder. The service verifies write access and stores only these two
+On first launch on macOS, choose an existing Obsidian Vault or Markdown folder with the
+native folder picker, then choose the card subfolder. The service verifies write access and stores only these two
 values in the ignored local file `data/storage.yaml`. Use **Settings** later to change them.
 When `OBSIDIAN_VAULT_DIR` is set by Docker or an administrator, the web setting is read-only.
+Other host platforms can use the absolute-path fallback in the same dialog.
 
 On mobile, the primary workflow is Telegram, Discord, or another IM connected to an Agent
 Harness. Forward a standalone link or file and the Harness calls `knowledge_ingest`; no web

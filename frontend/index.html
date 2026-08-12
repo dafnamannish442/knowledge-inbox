@@ -149,6 +149,9 @@
     .field input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; outline:0; background:#0f1114; color:var(--text); }
     .field input:focus { border-color:#7253bd; box-shadow:0 0 0 3px #8b5cf619; }
     .field small { color:var(--muted); }
+    .path-row { display:flex; gap:8px; }
+    .path-row input { min-width:0; }
+    .choose-folder { flex:0 0 auto; min-height:44px; padding:0 14px; border:1px solid var(--line); border-radius:10px; background:#282c34; cursor:pointer; }
     .settings-error { min-height:22px; margin:12px 0 0; color:var(--danger); font-size:13px; }
     .dialog-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:18px; }
     .dialog-actions button { min-height:42px; padding:0 15px; border:0; border-radius:10px; cursor:pointer; }
@@ -180,8 +183,8 @@
       <p class="settings-copy">只需设置一次。知识卡片会作为标准 Markdown 写入这个文件夹。</p>
       <div class="field">
         <label for="vault-dir">Obsidian Vault 或 Markdown 文件夹</label>
-        <input id="vault-dir" name="vault_dir" placeholder="/path/to/MyVault" required>
-        <small>在 Finder 选中文件夹，按 ⌥⌘C 复制完整路径。</small>
+        <div class="path-row"><input id="vault-dir" name="vault_dir" placeholder="/path/to/MyVault" required><button id="choose-folder" class="choose-folder" type="button">选择文件夹…</button></div>
+        <small id="path-help">点击“选择文件夹”打开系统选择器；路径输入用于其他系统或 Docker。</small>
       </div>
       <div class="field">
         <label for="inbox-folder">卡片子目录</label>
@@ -309,6 +312,7 @@ async function loadStorageSettings() {
   $('#vault-dir').disabled = settings.managed_by_environment;
   $('#inbox-folder').disabled = settings.managed_by_environment;
   $('.save-settings').hidden = settings.managed_by_environment;
+  $('#choose-folder').hidden = !settings.native_folder_picker || settings.managed_by_environment;
   $('#cancel-settings').hidden = !settings.configured;
   if (!settings.configured) storageDialog.showModal();
   return settings;
@@ -317,6 +321,30 @@ async function loadStorageSettings() {
 $('#settings-button').addEventListener('click', () => {
   $('#settings-error').textContent = '';
   storageDialog.showModal();
+});
+$('#choose-folder').addEventListener('click', async () => {
+  const button = $('#choose-folder');
+  button.disabled = true;
+  button.textContent = '正在打开…';
+  $('#settings-error').textContent = '';
+  try {
+    const response = await fetch('/api/settings/storage/select', {
+      method:'POST',
+      headers:{'content-type':'application/json','x-knowledge-ui':'1'},
+      body:JSON.stringify({initial_path:$('#vault-dir').value.trim()}),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || await response.text());
+    }
+    const result = await response.json();
+    if (result.selected) $('#vault-dir').value = result.path;
+  } catch (error) {
+    $('#settings-error').textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = '选择文件夹…';
+  }
 });
 storageDialog.addEventListener('cancel', event => {
   if (!storageConfigured) event.preventDefault();
