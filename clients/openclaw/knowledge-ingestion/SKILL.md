@@ -19,6 +19,8 @@ Call `knowledge_ingest` with the exact URL, absolute local path, or original tex
 - Use up to 1800 seconds for long audio or video.
 - On success, report the returned `note_path`.
 - On failure, report the exact actionable error. Never claim a note was saved.
+- If storage is not configured, direct the user once to `http://127.0.0.1:8787/` to
+  choose an Obsidian Vault or Markdown folder, then retry the original content.
 - Do not summarize separately; the service handles AI analysis, tags, links, and Markdown.
 - Use `knowledge_list_capabilities` only when source support is uncertain.
 - Use `knowledge_get_job` to inspect a known asynchronous job.

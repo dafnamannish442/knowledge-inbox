@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile, status
 
+from backend.config import save_storage_settings
 from backend.models import IngestRequest, Job
 
 router = APIRouter(prefix="/api")
@@ -34,11 +36,36 @@ async def health(request: Request) -> dict[str, object]:
         "status": "ok",
         "queue_size": request.app.state.worker.queue.qsize(),
         "ai_enabled": request.app.state.config.ai.enabled,
+        "storage_configured": request.app.state.config.storage_configured,
     }
 
 
+@router.get("/settings/storage")
+async def get_storage_settings(request: Request) -> dict[str, object]:
+    config = request.app.state.config
+    return {
+        "configured": config.storage_configured,
+        "vault_dir": str(config.vault_dir) if config.vault_dir else "",
+        "inbox_folder": config.inbox_folder,
+        "managed_by_environment": bool(os.getenv("OBSIDIAN_VAULT_DIR")),
+    }
+
+
+@router.put("/settings/storage")
+async def update_storage_settings(payload: dict, request: Request) -> dict[str, object]:
+    try:
+        save_storage_settings(
+            request.app.state.config,
+            str(payload.get("vault_dir", "")),
+            str(payload.get("inbox_folder", "Knowledge Inbox")),
+        )
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return await get_storage_settings(request)
+
+
 @router.get("/capabilities")
-async def capabilities() -> dict[str, object]:
+async def capabilities(request: Request) -> dict[str, object]:
     return {
         "service": "knowledge-ingestion",
         "version": "0.3.0",
@@ -46,11 +73,15 @@ async def capabilities() -> dict[str, object]:
         "input_types": ["url", "file", "text"],
         "transports": ["rest", "mcp-stdio"],
         "outputs": ["obsidian_markdown", "sqlite"],
+        "storage_configured": request.app.state.config.storage_configured,
+        "storage_setup_url": "http://127.0.0.1:8787/",
     }
 
 
 @router.post("/ingest", response_model=Job, status_code=status.HTTP_202_ACCEPTED)
 async def ingest(payload: IngestRequest, request: Request) -> Job:
+    if not request.app.state.config.storage_configured:
+        raise HTTPException(409, "请先配置知识库文件夹")
     if bool(payload.url) == bool(payload.text):
         raise HTTPException(422, "url 和 text 必须且只能提供一个")
     input_type = "url" if payload.url else "text"
@@ -67,6 +98,8 @@ async def upload(
     title: str | None = Form(default=None),
     source_url: str | None = Form(default=None),
 ) -> Job:
+    if not request.app.state.config.storage_configured:
+        raise HTTPException(409, "请先配置知识库文件夹")
     filename = Path(file.filename or "upload.bin").name
     upload_dir = request.app.state.config.data_dir / "originals" / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -122,6 +155,8 @@ async def telegram(
     request: Request,
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
 ) -> Job:
+    if not request.app.state.config.storage_configured:
+        raise HTTPException(409, "请先打开 http://127.0.0.1:8787/ 配置知识库文件夹")
     expected = request.app.state.config.telegram_webhook_secret
     if expected and x_telegram_bot_api_secret_token != expected:
         raise HTTPException(403, "Telegram webhook secret 不匹配")

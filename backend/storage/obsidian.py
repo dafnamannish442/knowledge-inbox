@@ -16,6 +16,8 @@ class ObsidianWriter:
         self.config = config
 
     def write(self, item: ContentItem) -> Path:
+        if not self.config.vault_dir:
+            raise RuntimeError("请先配置知识库文件夹")
         folder = self.config.vault_dir / self.config.inbox_folder
         folder.mkdir(parents=True, exist_ok=True)
         date = item.created_at.astimezone().strftime("%Y-%m-%d")

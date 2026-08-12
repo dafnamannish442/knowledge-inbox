@@ -46,7 +46,7 @@ class KnowledgeLinker:
             for token in [*item.tags, *item.keywords, *re.findall(r"\w{2,}", item.title)]
             if token
         }
-        if not needles or not self.config.vault_dir.exists():
+        if not needles or not self.config.vault_dir or not self.config.vault_dir.exists():
             return []
         scored: list[tuple[int, str]] = []
         paths = sorted(

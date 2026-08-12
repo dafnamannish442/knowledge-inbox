@@ -29,10 +29,13 @@
       color:var(--text);
       font:15px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     }
-    button,textarea { font:inherit; }
+    button,input,textarea { font:inherit; }
     button { color:inherit; }
     main { width:min(760px,calc(100% - 32px)); margin:0 auto; padding:28px 0 64px; }
     header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .header-actions { display:flex; align-items:center; gap:12px; }
+    .settings-button { padding:7px 10px; border:1px solid var(--line); border-radius:9px; background:transparent; color:var(--muted); cursor:pointer; }
+    .settings-button:hover { color:var(--text); background:#1c1f25; }
     .brand { font-weight:760; letter-spacing:-.02em; }
     .health { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:13px; }
     .health::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--warning); }
@@ -136,6 +139,21 @@
     .job-detail,.empty { color:var(--muted); font-size:12px; }
     .job-detail.error { color:#ff9b9b; white-space:normal; }
     time { color:var(--muted); font-size:12px; }
+    dialog { width:min(540px,calc(100% - 28px)); padding:0; border:1px solid var(--line); border-radius:20px; background:var(--panel-strong); color:var(--text); box-shadow:0 28px 90px #000b; }
+    dialog::backdrop { background:#050609c9; backdrop-filter:blur(5px); }
+    .settings-form { padding:26px; }
+    .settings-form h2 { margin:0 0 8px; font-size:24px; }
+    .settings-copy { margin:0 0 22px; color:var(--muted); }
+    .field { display:grid; gap:7px; margin-top:15px; }
+    .field label { font-size:13px; font-weight:700; }
+    .field input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; outline:0; background:#0f1114; color:var(--text); }
+    .field input:focus { border-color:#7253bd; box-shadow:0 0 0 3px #8b5cf619; }
+    .field small { color:var(--muted); }
+    .settings-error { min-height:22px; margin:12px 0 0; color:var(--danger); font-size:13px; }
+    .dialog-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:18px; }
+    .dialog-actions button { min-height:42px; padding:0 15px; border:0; border-radius:10px; cursor:pointer; }
+    .cancel-settings { background:#282c34; }
+    .save-settings { background:var(--accent); font-weight:750; }
     @media(max-width:600px) {
       main { width:min(100% - 24px,760px); padding-top:18px; }
       .hero { padding:60px 0 24px; }
@@ -153,8 +171,27 @@
 <main>
   <header>
     <div class="brand">Knowledge Inbox</div>
-    <div id="health" class="health">连接中</div>
+    <div class="header-actions"><button id="settings-button" class="settings-button" type="button">设置</button><div id="health" class="health">连接中</div></div>
   </header>
+
+  <dialog id="storage-dialog">
+    <form id="storage-form" class="settings-form">
+      <h2>选择知识库位置</h2>
+      <p class="settings-copy">只需设置一次。知识卡片会作为标准 Markdown 写入这个文件夹。</p>
+      <div class="field">
+        <label for="vault-dir">Obsidian Vault 或 Markdown 文件夹</label>
+        <input id="vault-dir" name="vault_dir" placeholder="/path/to/MyVault" required>
+        <small>在 Finder 选中文件夹，按 ⌥⌘C 复制完整路径。</small>
+      </div>
+      <div class="field">
+        <label for="inbox-folder">卡片子目录</label>
+        <input id="inbox-folder" name="inbox_folder" value="Knowledge Inbox" required>
+        <small>相对于上面的知识库目录；不存在时会自动创建。</small>
+      </div>
+      <div id="settings-error" class="settings-error" role="alert"></div>
+      <div class="dialog-actions"><button id="cancel-settings" class="cancel-settings" type="button">取消</button><button class="save-settings" type="submit">保存并开始使用</button></div>
+    </form>
+  </dialog>
 
   <section class="hero">
     <p class="eyebrow">Local-first · Obsidian</p>
@@ -205,7 +242,9 @@ const input = $('#inbox-input');
 const fileInput = $('#file-input');
 const form = $('#inbox-form');
 const submitButton = $('#submit-button');
+const storageDialog = $('#storage-dialog');
 let selectedFile = null;
+let storageConfigured = false;
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const extractSingleUrl = value => {
@@ -260,7 +299,60 @@ function setFeedback(message, error = false) {
   feedback.classList.toggle('error', error);
 }
 
+async function loadStorageSettings() {
+  const response = await fetch('/api/settings/storage');
+  if (!response.ok) throw new Error(await response.text());
+  const settings = await response.json();
+  storageConfigured = settings.configured;
+  $('#vault-dir').value = settings.vault_dir || '';
+  $('#inbox-folder').value = settings.inbox_folder || 'Knowledge Inbox';
+  $('#vault-dir').disabled = settings.managed_by_environment;
+  $('#inbox-folder').disabled = settings.managed_by_environment;
+  $('.save-settings').hidden = settings.managed_by_environment;
+  $('#cancel-settings').hidden = !settings.configured;
+  if (!settings.configured) storageDialog.showModal();
+  return settings;
+}
+
+$('#settings-button').addEventListener('click', () => {
+  $('#settings-error').textContent = '';
+  storageDialog.showModal();
+});
+storageDialog.addEventListener('cancel', event => {
+  if (!storageConfigured) event.preventDefault();
+});
+$('#cancel-settings').addEventListener('click', () => storageDialog.close());
+$('#storage-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('.save-settings');
+  button.disabled = true;
+  $('#settings-error').textContent = '';
+  try {
+    const response = await fetch('/api/settings/storage', {
+      method:'PUT',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({vault_dir:$('#vault-dir').value.trim(), inbox_folder:$('#inbox-folder').value.trim()}),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || await response.text());
+    }
+    storageConfigured = true;
+    storageDialog.close();
+    setFeedback('知识库位置已保存');
+    await refresh();
+  } catch (error) {
+    $('#settings-error').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 async function submitContent() {
+  if (!storageConfigured) {
+    storageDialog.showModal();
+    throw new Error('请先配置知识库文件夹');
+  }
   const value = input.value.trim();
   let response;
   if (selectedFile) {
@@ -329,7 +421,7 @@ async function refresh() {
 }
 
 updateComposer();
-refresh();
+loadStorageSettings().then(refresh).catch(error => setFeedback(`设置读取失败：${error.message}`, true));
 setInterval(refresh,3000);
 </script>
 </body>

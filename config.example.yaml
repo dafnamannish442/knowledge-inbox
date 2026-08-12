@@ -1,5 +1,4 @@
 data_dir: ./data
-vault_dir: ./data/ObsidianVault
 inbox_folder: Knowledge Inbox
 database_path: ./data/knowledge.sqlite
 max_download_mb: 500

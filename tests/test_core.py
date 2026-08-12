@@ -8,6 +8,7 @@ from runpy import run_path
 from types import ModuleType, SimpleNamespace
 
 import httpx
+from fastapi import HTTPException
 
 from backend.adapters.podcast import PodcastAdapter
 from backend.adapters.registry import AdapterRegistry, build_registry
@@ -15,8 +16,9 @@ from backend.adapters.remote_media import RemoteMediaAdapter
 from backend.adapters.twitter import TwitterAdapter
 from backend.adapters.vimeo import VimeoAdapter
 from backend.adapters.wechat_video import WeChatVideoAdapter
-from backend.config import AIConfig, AppConfig
-from backend.models import ContentItem, Job, JobStatus
+from backend.api.routes import ingest
+from backend.config import AIConfig, AppConfig, get_config, save_storage_settings
+from backend.models import ContentItem, IngestRequest, Job, JobStatus
 from backend.processors.ai import AIProcessor
 from backend.processors.linker import KnowledgeLinker
 from backend.processors.pipeline import ContentPipeline
@@ -678,7 +680,72 @@ def test_frontend_uses_one_unified_inbox() -> None:
     assert 'id="inbox-input"' in html
     assert 'id="file-input"' in html
     assert "extractSingleUrl" in html
+    assert 'id="storage-dialog"' in html
+    assert "/api/settings/storage" in html
+    assert "if (!storageConfigured) event.preventDefault()" in html
     assert all(old_id not in html for old_id in ("url-form", "file-form", "text-form"))
+
+
+def test_storage_settings_are_validated_and_persisted(tmp_path: Path) -> None:
+    config = AppConfig(data_dir=tmp_path / "data")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    save_storage_settings(config, str(vault), "Knowledge/Inbox")
+
+    assert config.vault_dir == vault.resolve()
+    assert config.inbox_folder == "Knowledge/Inbox"
+    assert (vault / "Knowledge" / "Inbox").is_dir()
+    assert "Knowledge/Inbox" in config.storage_config_path.read_text("utf-8")
+
+
+def test_storage_settings_reject_unsafe_paths(tmp_path: Path) -> None:
+    config = AppConfig(data_dir=tmp_path / "data")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    for vault_dir, inbox_folder in (("relative", "Inbox"), (str(vault), "../Outside")):
+        try:
+            save_storage_settings(config, vault_dir, inbox_folder)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected unsafe storage settings to fail")
+
+
+def test_storage_settings_reload_from_local_file(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(f"data_dir: {tmp_path / 'data'}\n", encoding="utf-8")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("KNOWLEDGE_CONFIG", str(config_path))
+
+    get_config.cache_clear()
+    first = get_config()
+    assert not first.storage_configured
+    save_storage_settings(first, str(vault), "Cards")
+    get_config.cache_clear()
+
+    loaded = get_config()
+    assert loaded.vault_dir == vault.resolve()
+    assert loaded.inbox_folder == "Cards"
+    get_config.cache_clear()
+
+
+def test_ingest_rejects_unconfigured_storage(tmp_path: Path) -> None:
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(config=AppConfig(data_dir=tmp_path / "data"))
+        )
+    )
+
+    try:
+        asyncio.run(ingest(IngestRequest(text="hello"), request))
+    except HTTPException as error:
+        assert error.status_code == 409
+        assert "配置知识库文件夹" in error.detail
+    else:
+        raise AssertionError("expected unconfigured ingestion to fail")
 
 
 def test_cross_harness_skills_support_automatic_forwarded_content() -> None:
