@@ -62,7 +62,17 @@ cp config.example.yaml config.yaml
 uvicorn backend.main:app --host 127.0.0.1 --port 8787
 ```
 
-Open <http://127.0.0.1:8787>, or use the CLI:
+Open <http://127.0.0.1:8787> for the universal inbox: paste a link or text, or
+drop a video, screenshot, PDF, or local file into the same input area. Source detection,
+AI processing, classification, tags, linking, and Obsidian output are automatic.
+
+On mobile, the primary workflow is Telegram, Discord, or another IM connected to an Agent
+Harness. Forward a standalone link or file and the Harness calls `knowledge_ingest`; no web
+form or extra “save this” message is required. Links included as context for ordinary questions
+are not archived automatically. A browser extension for one-click desktop capture is a natural
+next client, but is not included yet.
+
+You can also use the CLI:
 
 ```bash
 .venv/bin/python scripts/ingest.py 'https://example.com/article'

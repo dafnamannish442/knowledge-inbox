@@ -670,3 +670,21 @@ def test_ingest_script_classifies_url_file_and_text(tmp_path: Path) -> None:
     assert classify_input("https://example.com") == ("url", "https://example.com")
     assert classify_input(str(source)) == ("file", source)
     assert classify_input("一段文字") == ("text", "一段文字")
+
+
+def test_frontend_uses_one_unified_inbox() -> None:
+    html = Path("frontend/index.html").read_text(encoding="utf-8")
+    assert html.count('<form id="inbox-form"') == 1
+    assert 'id="inbox-input"' in html
+    assert 'id="file-input"' in html
+    assert "extractSingleUrl" in html
+    assert all(old_id not in html for old_id in ("url-form", "file-form", "text-form"))
+
+
+def test_cross_harness_skills_support_automatic_forwarded_content() -> None:
+    for harness in ("codex", "hermes", "openclaw"):
+        skill = Path(
+            f"clients/{harness}/knowledge-ingestion/SKILL.md"
+        ).read_text(encoding="utf-8")
+        assert "standalone supported link" in skill
+        assert "context for a question" in skill
