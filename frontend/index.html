@@ -142,8 +142,8 @@
     .job-detail.error { color:#ff9b9b; white-space:normal; }
     time { color:var(--muted); font-size:12px; }
     .open-job { min-width:64px; min-height:34px; padding:0 12px; border:1px solid var(--line); border-radius:9px; background:#20242a; color:var(--text); font-weight:700; cursor:pointer; }
-    .open-job:hover { border-color:#7253bd; background:var(--accent); }
-    .job-action { width:64px; }
+    .open-job:not(:disabled):hover { border-color:#7253bd; background:var(--accent); }
+    .open-job:disabled { opacity:.38; cursor:not-allowed; background:#17191e; }
     dialog { width:min(540px,calc(100% - 28px)); padding:0; border:1px solid var(--line); border-radius:20px; background:var(--panel-strong); color:var(--text); box-shadow:0 28px 90px #000b; }
     dialog::backdrop { background:#050609c9; backdrop-filter:blur(5px); }
     .settings-form { padding:26px; }
@@ -483,7 +483,7 @@ async function refresh() {
         <span class="status ${esc(job.status)}">${t(job.status) || esc(job.status)}</span>
         <span class="job-title" title="${esc(jobLabel(job))}">${esc(jobLabel(job))}${job.error ? `<span class="job-detail error">${esc(job.error)}</span>` : job.note_path ? `<span class="job-detail">${t('written')}</span>` : ''}</span>
         <time>${new Date(job.created_at).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}</time>
-        ${job.note_path ? `<button class="open-job" type="button" data-open-job="${esc(job.id)}" title="${esc(t('openFolder'))}">${t('open')}</button>` : '<span class="job-action" aria-hidden="true"></span>'}
+        <button class="open-job" type="button" ${job.note_path ? `data-open-job="${esc(job.id)}" title="${esc(t('openFolder'))}"` : 'disabled'}>${t('open')}</button>
       </div>`).join('') : `<p class="empty">${t('empty')}</p>`;
   } catch {
     $('#health').classList.remove('online');

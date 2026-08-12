@@ -686,6 +686,8 @@ def test_frontend_uses_one_unified_inbox() -> None:
     assert "/api/settings/storage/select" in html
     assert "/open-folder" in html
     assert 'class="open-job"' in html
+    assert "job.note_path ? `data-open-job" in html
+    assert ": 'disabled'" in html
     assert "<button class=\"job " not in html
     assert "open:'打开'" in html
     assert "open:'Open'" in html
